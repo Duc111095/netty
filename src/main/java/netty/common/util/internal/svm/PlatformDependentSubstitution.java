@@ -1,0 +1,16 @@
+package netty.common.util.internal.svm;
+
+import com.oracle.svm.core.annotate.Alias;
+import com.oracle.svm.core.annotate.RecomputeFieldValue;
+import com.oracle.svm.core.annotate.TargetClass;
+
+@TargetClass(className = "io.netty.util.internal.PlatformDependent")
+final class PlatformDependentSubstitution {
+	private PlatformDependentSubstitution() {}
+	
+	@Alias
+	@RecomputeFieldValue(
+			kind = RecomputeFieldValue.Kind.ArrayBaseOffset,
+			declClass = byte[].class)
+	private static long BYTE_ARRAY_BASE_OFFSET;
+}
