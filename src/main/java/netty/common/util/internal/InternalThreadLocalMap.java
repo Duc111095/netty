@@ -12,6 +12,8 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import netty.common.util.concurrent.FastThreadLocal;
+import netty.common.util.concurrent.FastThreadLocalThread;
 import netty.common.util.internal.logging.InternalLogger;
 import netty.common.util.internal.logging.InternalLoggerFactory;
 

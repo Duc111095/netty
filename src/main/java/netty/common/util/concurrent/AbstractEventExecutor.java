@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Callable;
+import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.jetbrains.annotations.Async.Execute;
@@ -81,7 +82,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
 	}
 	
 	@Override
-	protected final <T> RunnableFuture<T> newTaskFor(Callable task) {
+	protected final <T> RunnableFuture<T> newTaskFor(Callable<T> task) {
 		return new PromiseTask<T>(this, task);
 	}
 	

@@ -19,7 +19,7 @@ public interface EventExecutor extends EventExecutorGroup, ThreadAwareExecutor {
 		return new DefaultPromise<>(this);
 	}
 	
-	default <V> ProgressPromise<V> newProgressivePromise() {
+	default <V> ProgressivePromise<V> newProgressivePromise() {
 		return new DefaultProgressivePromise<>(this);
 	}
 	
