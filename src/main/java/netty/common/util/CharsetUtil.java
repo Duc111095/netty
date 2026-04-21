@@ -9,6 +9,8 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import netty.common.util.internal.InternalThreadLocalMap;
+
 public final class CharsetUtil {
 
 	public static final Charset UTF_16 = StandardCharsets.UTF_16;

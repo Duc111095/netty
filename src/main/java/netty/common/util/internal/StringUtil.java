@@ -234,7 +234,7 @@ public final class StringUtil {
     	int last;
     	if (trimWhiteSpace) {
     		start = indexOfFirstNonOwsChar(value, length);
-    		last = indexOfLastNotOwsChar(value, start, length);
+    		last = indexOfLastNonOwsChar(value, start, length);
     	} else {
     		start = 0;
     		last = length - 1;

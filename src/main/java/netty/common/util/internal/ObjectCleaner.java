@@ -1,11 +1,14 @@
 package netty.common.util.internal;
 
 import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static netty.common.util.internal.SystemPropertyUtil.getInt;
+import netty.common.util.concurrent.FastThreadLocalThread;
 
 public final class ObjectCleaner {
 	private static final int REFERENCE_QUEUE_POLL_TIMEOUT_MS =
@@ -20,8 +23,86 @@ public final class ObjectCleaner {
 		public void run() {
 			boolean interrupted = false;
 			for (;;) {
-				while ()
+				while (!LIVE_SET.isEmpty()) {
+					final AutomaticCleanerReference reference;
+					try {
+						reference = (AutomaticCleanerReference) REFERENCE_QUEUE.remove(REFERENCE_QUEUE_POLL_TIMEOUT_MS);
+					} catch (InterruptedException ex) {
+						interrupted = true;
+						continue;
+					}
+					if (reference != null) {
+						try {
+							reference.cleanup();
+						} catch (Throwable ignored) {
+							
+						}
+						LIVE_SET.remove(reference);
+					}
+				}
+				CLEANER_RUNNING.set(false);
+				
+				if (LIVE_SET.isEmpty() || !CLEANER_RUNNING.compareAndSet(false, true)) {
+					break;
+				}
 			}
+			if (interrupted) {
+				Thread.currentThread().interrupt();
+			}
+		}
+	};
+	
+	public static void register(Object object, Runnable cleanupTask) {
+		AutomaticCleanerReference reference = new AutomaticCleanerReference(object,
+				ObjectUtil.checkNotNull(cleanupTask, "cleanupTask"));
+		
+		LIVE_SET.add(reference);
+		if (CLEANER_RUNNING.compareAndSet(false, true)) {
+			final Thread cleanupThread = new FastThreadLocalThread(CLEANER_TASK);
+			cleanupThread.setPriority(Thread.MIN_PRIORITY);
+			AccessController.doPrivileged(new PrivilegedAction<Void>() {
+				@Override
+				public Void run() {
+					cleanupThread.setContextClassLoader(null);
+					return null;
+				}
+			});
+			cleanupThread.setName(CLEANER_THREAD_NAME);
+			
+			cleanupThread.setDaemon(true);
+			cleanupThread.start();
+		}
+	}
+	
+	public static int getLiveSetCount() {
+		return LIVE_SET.size();
+	}
+	
+	private ObjectCleaner() {
+		
+	}
+	
+	private static final class AutomaticCleanerReference extends WeakReference<Object> {
+		private final Runnable cleanupTask;
+		
+		AutomaticCleanerReference(Object referent, Runnable cleanupTask) {
+			super(referent, REFERENCE_QUEUE);
+			this.cleanupTask = cleanupTask;
+		}
+		
+		void cleanup() {
+			cleanupTask.run();
+		}
+		
+		@Override
+		public Thread get() {
+			return null;
+		}
+		
+		@Override
+		public void clear() {
+			LIVE_SET.remove(this);
+			super.clear();
 		}
 	}
 }

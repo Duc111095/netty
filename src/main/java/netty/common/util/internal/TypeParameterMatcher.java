@@ -5,7 +5,7 @@ import java.util.Map;
 
 public abstract class TypeParameterMatcher {
 	
-	private static final TypeParameterMatcher NOOP = new TypeParameterMacher() {
+	private static final TypeParameterMatcher NOOP = new TypeParameterMatcher() {
 		@Override
 		public boolean match(Object msg) {
 			return true;
@@ -42,7 +42,7 @@ public abstract class TypeParameterMatcher {
 		
 		TypeParameterMatcher matcher = map.get(typeParamName);
 		if (matcher == null) {
-			matcher = get(ReflectionUtil.resolveTypeParameter(object, parameterizedSuperclass, typeParamName));
+			matcher = get(ReflectionUtil.resolveTypeParameter(object, parametrizedSuperclass, typeParamName));
 			map.put(typeParamName, matcher);
 		}
 		
