@@ -424,7 +424,10 @@ public final class PlatformDependent {
 	}
 	
 	public static void throwException(Throwable t) {
-		PlatformDependent0.throwException(t);
+		try {
+			PlatformDependent0.throwException(t);
+		} catch (Throwable e) {
+		}
 	}
 	
 	public static <K, V> ConcurrentMap<K, V> newConcurrentHashMap() {
