@@ -4,6 +4,9 @@ import netty.common.util.internal.logging.InternalLogger;
 import netty.common.util.internal.logging.InternalLoggerFactory;
 
 import static netty.common.util.internal.ObjectUtil.checkNotNullWithIAE;
+
+import netty.common.util.internal.PromiseNotificationUtil;
+
 import static netty.common.util.internal.ObjectUtil.checkNotNull;
 
 
@@ -30,6 +33,7 @@ public class PromiseNotifier<V, F extends Future<V>> implements GenericFutureLis
 		return cascade(true, future, promise);
 	}
 	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static <V, F extends Future<V>> F cascade(boolean logNotifyFailure, final F future,
 			final Promise<? super V> promise) {
 		promise.addListener((FutureListener) f -> {
