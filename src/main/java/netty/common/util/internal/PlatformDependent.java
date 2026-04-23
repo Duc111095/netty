@@ -28,7 +28,6 @@ import java.util.Set;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
@@ -58,8 +57,6 @@ import static netty.common.util.internal.PlatformDependent0.HASH_CODE_C1;
 import static netty.common.util.internal.PlatformDependent0.HASH_CODE_C2;
 import static netty.common.util.internal.PlatformDependent0.hashCodeAsciiSanitize;
 import static netty.common.util.internal.PlatformDependent0.unalignedAccess;
-import static java.lang.Math.max;
-import static java.lang.Math.min;
 import static java.lang.invoke.MethodType.methodType;
 
 

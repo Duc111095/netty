@@ -5,6 +5,8 @@ import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Map;
 
+import netty.common.util.AsciiString;
+
 public class EmptyArrays {
 	public static final int[] EMPTY_INTS = {};
     public static final byte[] EMPTY_BYTES = {};
