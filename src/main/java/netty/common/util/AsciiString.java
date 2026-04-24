@@ -8,6 +8,7 @@ import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -97,7 +98,7 @@ public final class AsciiString implements CharSequence, Comparable<CharSequence>
 		
 		this.value = PlatformDependent.allocateUninitializedArray(length);
 		for (int i = 0, j = start; i < length; i++, j++) {
-			this.value = c2b(value[j]);
+			this.value[i] = c2b(value[j]);
 		}
 		this.offset = 0;
 		this.length = length;
@@ -175,7 +176,7 @@ public final class AsciiString implements CharSequence, Comparable<CharSequence>
 	}
 	
 	public int forEachByteDesc(ByteProcessor visitor) throws Exception {
-		return forEacheByteDesc0(0, length(),visitor);
+		return forEachByteDesc0(0, length(),visitor);
 	}
 	
 	public int forEachByteDesc(int index, int length, ByteProcessor visitor) throws Exception {
@@ -472,7 +473,7 @@ public final class AsciiString implements CharSequence, Comparable<CharSequence>
 	}
 	
 	public int lastIndexOf(CharSequence string) {
-		return lastIndefOf(string, length);
+		return lastIndexOf(string, length);
 	}
 	
 	public int lastIndexOf(CharSequence subString, int start) {
@@ -851,6 +852,412 @@ public final class AsciiString implements CharSequence, Comparable<CharSequence>
 		return result;
 	}
 	
+	public long parseLong() {
+		return parseLong(0, length(), 10);
+	}
 	
+	public long parseLong(int radix) {
+		return parseLong(0, length(), radix);
+	}
+	
+	public long parseLong(int start, int end) {
+		return parseLong(start, end, 10);
+	}
+	
+	public long parseLong(int start, int end, int radix) {
+		if (radix < Character.MIN_RADIX || radix > Character.MAX_RADIX) {
+			throw new NumberFormatException();
+		}
+		
+		if (start == end ) {
+			throw new NumberFormatException();
+		}
+		
+		int i = start;
+		boolean negative = byteAt(i) == '-';
+		if (negative && ++i == end) {
+			throw new NumberFormatException(subSequence(start, end, false).toString());
+		}
+		return parseLong(i, end, radix, negative);
+	}
+	
+	private long parseLong(int start, int end, int radix, boolean negative) {
+		long max = Long.MIN_VALUE / radix;
+		long result = 0;
+		int currOffset = start;
+		while (currOffset < end) {
+			int digit = Character.digit((char) (value[currOffset++ +offset] & 0xFF), radix);
+			if (digit == -1) {
+				throw new NumberFormatException(subSequence(start, end, false).toString());
+			}
+			if (max > result) {
+				throw new NumberFormatException(subSequence(start, end, false).toString());
+			}
+			long next = result * radix - digit;
+			if (next > result) {
+				throw new NumberFormatException(subSequence(start, end, false).toString());
+			}
+			result = next;
+		}
+		if (!negative) {
+			result = -result;
+			if (result < 0) {
+				throw new NumberFormatException(subSequence(start, end, false).toString());
+			}
+		}
+		return result;
+	}
+	
+	public float parseFloat() {
+		return parseFloat(0, length());
+	}
+	
+	public float parseFloat(int start, int end) {
+		return Float.parseFloat(toString(start, end));
+	}
+	
+	public double parseDouble() {
+		return parseDouble(0, length());
+	}
+	
+	public double parseDouble(int start, int end) {
+		return Double.parseDouble(toString(start, end));
+	}
+	 
+	public static final HashingStrategy<CharSequence> CASE_INSENSITIVE_HASHER =
+			new HashingStrategy<CharSequence>() {
+		@Override
+		public int hashCode(CharSequence o) {
+			return AsciiString.hashCode(o);
+		}
+
+		@Override
+		public boolean equals(CharSequence a, CharSequence b) {
+			return AsciiString.contentEquals(a, b);
+		}
+	};
+	
+	public static AsciiString of(CharSequence string) {
+		return string instanceof AsciiString ? (AsciiString) string : new AsciiString(string);
+	}
+	
+	
+	public static AsciiString cached(String string) {
+		AsciiString asciiString = new AsciiString(string);
+		asciiString.string = string;
+		return asciiString;
+	}
+	
+	public static int hashCode(CharSequence value) {
+		if (value == null) {
+			return 0;
+		}
+		
+		if (value instanceof AsciiString) {
+			return value.hashCode();
+		}
+		
+		return PlatformDependent.hashCodeAscii(value);
+	}
+	
+	public static boolean contains(CharSequence a, CharSequence b) {
+		return contains(a, b, DefaultCharEqualityComparator.INSTANCE);
+	}
+	
+	public static boolean constainsIgnoreCase(CharSequence a, CharSequence b) {
+		return contains(a, b, AsciiCaseInsensitiveCharEqualityComparator.INSTANCE);
+	}
+	
+	public static boolean contentEqualsIgnoreCase(CharSequence a, CharSequence b) {
+		if (a == null || b == null) {
+			return a == b;
+		}
+		if (a instanceof AsciiString) {
+			return ((AsciiString) a).contentEqualsIgnoreCase(b);
+		}
+		if (b instanceof AsciiString) {
+			return  ((AsciiString) b).contentEqualsIgnoreCase(a);
+		}
+		
+		if (a.length() != b.length()) {
+			return false;
+		}
+		for (int i = 0; i < a.length(); i++) {
+			if (!equalsIgnoreCase(a.charAt(i), b.charAt(i))) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public static boolean containsContentEqualsIgnoreCase(Collection<CharSequence> collection, CharSequence value) {
+		for (CharSequence v : collection) {
+			if (contentEqualsIgnoreCase(value, v)) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	public static boolean containsAllContentEqualsIgnoreCase(Collection<CharSequence> a, Collection<CharSequence> b) {
+		for (CharSequence v : b) {
+			if (!containsContentEqualsIgnoreCase(a, v)) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public static boolean contentEquals(CharSequence a, CharSequence b) {
+		if (a == null || b == null) {
+			return a == b;
+		}
+		
+		if (a instanceof AsciiString) {
+			return ((AsciiString) a).contentEquals(b);
+		}
+		if (b instanceof AsciiString) {
+			return ((AsciiString) b).contentEquals(a);
+		}
+		
+		if (a.length() != b.length()) {
+			return false;
+		}
+		
+		for (int i = 0; i < a.length(); i++) {
+			if (a.charAt(i) != b.charAt(i)) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	private static AsciiString[] toAsciiStringArray(String[] jdkResult) {
+		AsciiString[] res = new AsciiString[jdkResult.length];
+		for (int i = 0; i < jdkResult.length; i++) {
+			res[i] = new AsciiString(jdkResult[i]);
+		}
+		return res;
+	}
+	
+	private interface CharEqualityComparator {
+		boolean equals(char a, char b);
+	}
+	
+	private static final class DefaultCharEqualityComparator implements CharEqualityComparator {
+		static final DefaultCharEqualityComparator INSTANCE = new DefaultCharEqualityComparator();
+		private DefaultCharEqualityComparator() {}
+		
+		@Override
+		public boolean equals(char a, char b) {
+			return a == b;
+		}
+	}
+	
+	private static final class AsciiCaseInsensitiveCharEqualityComparator implements CharEqualityComparator {
+		static final AsciiCaseInsensitiveCharEqualityComparator 
+			INSTANCE = new AsciiCaseInsensitiveCharEqualityComparator();
+		
+		private AsciiCaseInsensitiveCharEqualityComparator() {}
+		
+		@Override
+		public boolean equals(char a, char b) {
+			return equalsIgnoreCase(a, b);
+		}
+	}
+	
+	private static final class GeneralCaseInsensitiveCharEqualityComparator implements CharEqualityComparator {
+		static final GeneralCaseInsensitiveCharEqualityComparator 
+		INSTANCE = new GeneralCaseInsensitiveCharEqualityComparator();
+		private GeneralCaseInsensitiveCharEqualityComparator() {}
+		
+		@Override
+		public boolean equals(char a, char b) {
+			return Character.toUpperCase(a) == Character.toUpperCase(b) ||
+					Character.toUpperCase(a) == Character.toUpperCase(b);
+		}
+	}
+	
+	private static boolean contains(CharSequence a, CharSequence b, CharEqualityComparator cmp) {
+		if (a == null || b == null || a.length() < b.length()) {
+			return false;
+		}
+		if (b.length() == 0) {
+			return true;
+		}
+		int bStart = 0;
+		for (int i = 0; i < a.length(); ++i) {
+			if (cmp.equals(b.charAt(bStart), a.charAt(i))) {
+				if (++bStart == b.length()) {
+					return true;
+				}
+			} else if (a.length() - i < b.length()) {
+				return false;
+			} else {
+				bStart = 0;
+			}
+		}
+		return false;
+	}
+	
+	private static boolean regionMatchesCharSequences(final CharSequence cs, final int csStart,
+			final CharSequence string, final int start, final int length,
+			CharEqualityComparator charEqualityComparator) {
+		if (csStart < 0 || length > cs.length() - csStart) {
+			return false;
+		}
+		if (start < 0 || length > string.length() - start) {
+			return false;
+		}
+		int csIndex = csStart;
+		int csEnd = csIndex + length;
+		int stringIndex = start;
+		
+		while (csIndex < csEnd) {
+			char c1 = cs.charAt(csIndex++);
+			char c2 = string.charAt(stringIndex++);
+			
+			if (!charEqualityComparator.equals(c1, c2)) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public static boolean regionMatches(final CharSequence cs, final boolean ignoreCase, final int csStart,
+			final CharSequence string, final int start, final int length) {
+		if (cs == null || string == null) {
+			return false;
+		}
+		if (cs instanceof String && string instanceof String) {
+			return ((String) cs).regionMatches(ignoreCase, csStart, (String) string, start, length);
+		}
+		
+		if (cs instanceof AsciiString) {
+			return ((AsciiString) cs).regionMatches(ignoreCase, csStart, string, start, length);
+		}
+		
+		return regionMatchesCharSequences(cs, csStart, string, start, length,
+				ignoreCase ? GeneralCaseInsensitiveCharEqualityComparator.INSTANCE :
+					DefaultCharEqualityComparator.INSTANCE);
+	}
+	
+	public static boolean regionMatchesAscii(final CharSequence cs, final boolean ignoreCase, final int csStart,
+			final CharSequence string, final int start, final int length) {
+		if (cs == null || string == null) {
+			return false;
+		}
+		if (!ignoreCase && cs instanceof String && string instanceof String) {
+			return ((String) cs).regionMatches(false, csStart, (String) string, start, length);
+		}
+		
+		if (cs instanceof AsciiString) {
+			return ((AsciiString) cs).regionMatches(ignoreCase, csStart, string, start, length);
+		}
+		
+		return regionMatchesCharSequences(cs, csStart, string, start, length,
+				ignoreCase ? AsciiCaseInsensitiveCharEqualityComparator.INSTANCE :
+					DefaultCharEqualityComparator.INSTANCE);
+	}
+	
+	public static int indexOfIgnoreCase(final CharSequence str, final CharSequence searchStr, int startPos) {
+		if (str == null || searchStr == null) {
+			return INDEX_NOT_FOUND;
+		}
+		if (startPos < 0) {
+			startPos = 0;
+		}
+		int searchStrLen = searchStr.length();
+		final int endLimit = str.length() - searchStrLen + 1;
+		if (startPos > endLimit) {
+			return INDEX_NOT_FOUND;
+		}
+		if (searchStrLen == 0) {
+			return startPos;
+		}
+		for (int i = startPos; i < endLimit; i++) {
+			if (regionMatches(str, true, i, searchStr, 0, searchStrLen)) {
+				return i;
+			}
+		}
+		return INDEX_NOT_FOUND;
+	}
+	
+	public static int indexOfIgnoreCaseAscii(final CharSequence str, final CharSequence searchStr, int startPos) {
+		if (str == null || searchStr == null) {
+			return INDEX_NOT_FOUND;
+		}
+		if (startPos < 0) {
+			startPos = 0;
+		}
+		int searchStrLen = searchStr.length();
+		final int endLimit = str.length() - searchStrLen + 1;
+		if (startPos > endLimit) {
+			return INDEX_NOT_FOUND;
+		}
+		if (searchStrLen == 0) {
+			return startPos;
+		}
+		for (int i = startPos; i < endLimit; i++) {
+			if (regionMatchesAscii(str, true, i, searchStr, 0, searchStrLen)) {
+				return i;
+			}
+		}
+		return INDEX_NOT_FOUND;
+	}
+	
+	public static int indexOf(final CharSequence cs, final char searchChar, int start) {
+		if (cs instanceof String) {
+			return ((String) cs).indexOf(searchChar, start);
+		} else if (cs instanceof AsciiString) {
+			return ((AsciiString) cs).indexOf(searchChar, start);
+		}
+		if (cs == null) {
+			return INDEX_NOT_FOUND;
+		}
+		final int sz = cs.length();
+		for (int i = start < 0 ? 0 : start; i < sz; i++) {
+			if (cs.charAt(i) == searchChar) {
+				return i;
+			}
+		}
+		return INDEX_NOT_FOUND;
+	}
+	
+	private static boolean equalsIgnoreCase(byte a, byte b) {
+		return a == b || AsciiStringUtil.toLowerCase(a) == AsciiStringUtil.toLowerCase(b);
+	}
+	
+	private static boolean equalsIgnoreCase(char a, char b) {
+		return a == b || toLowerCase(a) == toLowerCase(b);
+	}
+	
+	public static char toLowerCase(char c) {
+		return isUpperCase(c) ? (char) (c + 32) : c;
+	}
+	
+	private static byte toUpperCase(byte b) {
+		return AsciiStringUtil.toUpperCase(b);
+	}
+	
+	public static boolean isUpperCase(byte value) {
+		return AsciiStringUtil.isUpperCase(value);
+	}
+	
+	public static boolean isUpperCase(char value) {
+		return value >= 'A' && value <= 'Z';
+	}
+	
+	public static byte c2b(char c) {
+		return (byte) ((c > MAX_CHAR_VALUE) ? '?' : c);
+	}
+	
+	private static byte c2b0(char c) {
+		return (byte) c;
+	}
+	
+	public static char b2c(byte b) {
+		return (char) (b & 0xFF);
+	}
 }
 
