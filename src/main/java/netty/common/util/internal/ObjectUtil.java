@@ -126,6 +126,13 @@ public class ObjectUtil {
         return l;
     }
 	
+	public static double checkInRange(double d, double start, double end, String name) {
+        if (d < start || d > end) {
+            throw new IllegalArgumentException(name + ": " + d + " (expected: " + start + "-" + end + ")");
+        }
+        return d;
+    }
+	
 	public static <T> T[] checkNonEmpty(T[] array, String name) {
         if (checkNotNull(array, name).length == 0) {
             throw new IllegalArgumentException("Param '" + name + "' must not be empty");

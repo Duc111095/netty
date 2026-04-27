@@ -6,7 +6,7 @@ public interface ThreadProperties {
 	
 	int priority();
 	
-	boolean isInteruppted();
+	boolean isInterrupted();
 	
 	boolean isDaemon();
 	
