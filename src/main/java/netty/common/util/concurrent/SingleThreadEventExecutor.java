@@ -135,6 +135,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 		this.supportSuspension = supportSuspension;
 		this.maxPendingTasks = Math.max(16, maxPendingTasks);
 		this.executor = ThreadExecutorMap.apply(executor, this);
+		taskQueue = newTaskQueue(this.maxPendingTasks);
 		rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectHandler");
 		lastActivityTimeNanos = ticker().nanoTime();
 	}
@@ -153,7 +154,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 		this.supportSuspension = supportSuspension;
 		this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
 		this.executor = ThreadExecutorMap.apply(executor, this);
-		taskQueue = newTaskQueue(this.maxPendingTasks);
+		this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
 		rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
 		lastActivityTimeNanos = ticker().nanoTime();
 	}

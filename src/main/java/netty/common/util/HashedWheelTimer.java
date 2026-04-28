@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 
+import netty.common.util.concurrent.ImmediateExecutor;
 import netty.common.util.internal.MathUtil;
 import netty.common.util.internal.PlatformDependent;
 import netty.common.util.internal.logging.InternalLogger;

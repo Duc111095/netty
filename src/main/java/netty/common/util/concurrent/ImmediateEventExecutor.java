@@ -2,6 +2,7 @@ package netty.common.util.concurrent;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.concurrent.TimeUnit;
 
 import netty.common.util.internal.ObjectUtil;
 import netty.common.util.internal.logging.InternalLogger;
@@ -69,6 +70,11 @@ public final class ImmediateEventExecutor extends AbstractEventExecutor {
 	}
 	
 	@Override
+	public boolean awaitTermination(long timeout, TimeUnit unit) {
+		return false;
+	}
+	
+	@Override
 	public void execute(Runnable command) {
 		ObjectUtil.checkNotNull(command, "command");
 		if (!RUNNING.get()) {
@@ -125,4 +131,5 @@ public final class ImmediateEventExecutor extends AbstractEventExecutor {
 			
 		}
 	}
+
 }

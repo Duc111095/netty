@@ -10,6 +10,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import netty.common.util.concurrent.DefaultThreadFactory;
 import netty.common.util.internal.ObjectUtil;
 import netty.common.util.internal.StringUtil;
 import netty.common.util.internal.SystemPropertyUtil;
