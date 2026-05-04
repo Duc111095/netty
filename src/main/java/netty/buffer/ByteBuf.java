@@ -211,9 +211,9 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf>, 
 	
 	public abstract short readUnsignedByte();
 	
-	public abstract short getShort();
+	public abstract short readShort();
 	
-	public abstract short getShortLE();
+	public abstract short readShortLE();
 	
 	public abstract int readUnsignedShort();
 	
@@ -273,9 +273,9 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf>, 
 	
 	public abstract ByteBuf readBytes(OutputStream out, int length) throws IOException;
 	
-	public abstract ByteBuf readBytes(GatheringByteChannel out, int length) throws IOException;
+	public abstract int readBytes(GatheringByteChannel out, int length) throws IOException;
 	
-	public abstract CharSequence readCharSequecne(int length, Charset charset);
+	public abstract CharSequence readCharSequence(int length, Charset charset);
 	
 	public String readString(int length, Charset charset) {
 		int readerIndex = readerIndex();

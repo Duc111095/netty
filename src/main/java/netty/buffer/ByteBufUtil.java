@@ -6,13 +6,32 @@ import static netty.common.util.internal.ObjectUtil.checkPositiveOrZero;
 import static netty.common.util.internal.StringUtil.NEWLINE;
 import static netty.common.util.internal.StringUtil.isSurrogate;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
+import java.util.Arrays;
 
+import netty.common.util.AsciiString;
+import netty.common.util.ByteProcessor;
 import netty.common.util.CharsetUtil;
 import netty.common.util.IllegalReferenceCountException;
+import netty.common.util.Recycler;
+import netty.common.util.Recycler.EnhancedHandle;
+import netty.common.util.Recycler.Handle;
+import netty.common.util.ResourceLeakDetector;
 import netty.common.util.concurrent.FastThreadLocal;
 import netty.common.util.concurrent.FastThreadLocalThread;
+import netty.common.util.internal.MathUtil;
 import netty.common.util.internal.PlatformDependent;
+import netty.common.util.internal.SWARUtil;
 import netty.common.util.internal.StringUtil;
 import netty.common.util.internal.SystemPropertyUtil;
 import netty.common.util.internal.logging.InternalLogger;
@@ -404,5 +423,1148 @@ public final class ByteBufUtil {
 		return Long.reverseBytes(value) >>> Integer.SIZE;
 	}
 	
+	private static int unrolledFirstIndexOf(AbstractByteBuf buffer, int fromIndex, int byteCount, byte value) {
+		assert byteCount > 0 && byteCount < 8;
+		if (buffer._getByte(fromIndex) == value) {
+			return fromIndex;
+		}
+		if (byteCount == 1) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex + 1) == value) {
+			return fromIndex + 1;
+		}
+		if (byteCount == 2) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex + 2) == value) {
+			return fromIndex + 2;
+		}
+		if (byteCount == 3) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex + 3) == value) {
+			return fromIndex + 3;
+		}
+		if (byteCount == 4) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex + 4) == value) {
+			return fromIndex + 4;
+		}
+		if (byteCount == 5) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex + 5) == value) {
+			return fromIndex + 5;
+		}
+		if (byteCount == 6) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex + 6) == value) {
+			return fromIndex + 6;
+		}
+		return -1;
+	}
 	
+	static int firstIndexOf(AbstractByteBuf buffer, int fromIndex, int toIndex, byte value) {
+		fromIndex = Math.max(fromIndex, 0);
+		if (fromIndex >= toIndex || buffer.capacity() == 0) {
+			return -1;
+		}
+		final int length = toIndex - fromIndex;
+		buffer.checkIndex(fromIndex, length);
+		if (!SWAR_UNALIGNED) {
+			return linearFirstIndexOf(buffer, fromIndex, toIndex, value);
+		}
+		assert SWAR_UNALIGNED;
+		int offset = fromIndex;
+		final int byteCount = length & 7;
+		if (byteCount > 0) {
+			final int index = unrolledFirstIndexOf(buffer, fromIndex, byteCount, value);
+			if (index != -1) {
+				return index;
+			}
+			offset += byteCount;
+			if (offset == toIndex) {
+				return -1;
+			}
+		}
+		final int longCount = length >>> 3;
+		final ByteOrder nativeOrder = ByteOrder.nativeOrder();
+		final boolean isNative = nativeOrder == buffer.order();
+		final boolean useLE = nativeOrder == ByteOrder.LITTLE_ENDIAN;
+		final long pattern = SWARUtil.compilePattern(value);
+		for (int i = 0; i < longCount; i++) {
+			final long word = useLE ? buffer._getLongLE(offset) : buffer._getLong(offset);
+			final long result = SWARUtil.applyPattern(word, pattern);
+			if (result != 0) {
+				return offset + SWARUtil.getIndex(result, isNative);
+			}
+			offset += Long.BYTES;
+		}
+		return -1;
+	}
+	
+	private static int linearFirstIndexOf(AbstractByteBuf buffer, int fromIndex, int toIndex, byte value) {
+		for (int i = fromIndex; i < toIndex; i++) {
+			if (buffer._getByte(i) == value) {
+				return i;
+			}
+		}
+		return -1;
+	}
+	
+	public static int indexOf(ByteBuf buffer, int fromIndex, int toIndex, byte value) {
+		return buffer.indexOf(fromIndex, toIndex, value);
+	}
+	
+	public static short swapShort(short value) {
+		return Short.reverseBytes(value);
+	}
+	
+	public static int swapMedium(int value) {
+		int swapped = value << 16 & 0xff0000 | value & 0xff00 | value >>> 16 & 0xff;
+		if ((swapped &0x800000) != 0) {
+			swapped |= 0xff000000;
+		}
+		return swapped;
+	}
+	
+	public static int swapInt(int value) {
+		return Integer.reverseBytes(value);
+	}
+	
+	public static long swapLong(long value) {
+		return Long.reverseBytes(value);
+	}
+	
+	public static ByteBuf writeShortBE(ByteBuf buf, int shortValue) {
+		return buf.order() == ByteOrder.BIG_ENDIAN ? buf.writeShort(shortValue) :
+			buf.writeShort(swapShort((short) shortValue));
+	}
+	
+	public static ByteBuf setShortBE(ByteBuf buf, int index, int shortValue) {
+		return buf.order() == ByteOrder.BIG_ENDIAN ? buf.setShort(index, shortValue) :
+			buf.setShort(index, swapShort((short) shortValue));
+	}
+	
+	public static ByteBuf writeMediumBE(ByteBuf buf, int mediumValue) {
+		return buf.order() == ByteOrder.BIG_ENDIAN ? buf.writeMedium(mediumValue) :
+			buf.writeMedium(swapMedium(mediumValue));
+	}
+	
+	public static int readUnsignedShortBE(ByteBuf buf) {
+		return buf.order() == ByteOrder.BIG_ENDIAN ? buf.readUnsignedShort() :
+			swapShort((short) buf.readUnsignedShort()) & 0xFFFF;
+	}
+	
+	public static int readIntBE(ByteBuf buf) {
+		return buf.order() == ByteOrder.BIG_ENDIAN ? buf.readInt() : 
+			swapInt(buf.readInt());
+	}
+	
+	public static ByteBuf readBytes(ByteBufAllocator alloc, ByteBuf buffer, int length) {
+		boolean release = true;
+		ByteBuf dst = alloc.buffer(length);
+		try {
+			buffer.readBytes(dst);
+			release = false;
+			return dst;
+		} finally {
+			if (release) {
+				dst.release();
+			}
+		}
+	}
+	
+	static int lastIndexOf(final AbstractByteBuf buffer, int fromIndex, final int toIndex, final byte value) {
+		assert fromIndex > toIndex;
+		final int capacity = buffer.capacity();
+		fromIndex = Math.min(fromIndex, capacity);
+		if (fromIndex <= 0) {
+			return -1;
+		}
+		final int length = fromIndex - toIndex;
+		buffer.checkIndex(toIndex, length);
+		if (!SWAR_UNALIGNED) {
+			return linearLastIndexOf(buffer, fromIndex, toIndex, value);
+		}
+		final int longCount = length & 3;
+		if (longCount > 0) {
+			final ByteOrder nativeOrder = ByteOrder.nativeOrder();
+			final boolean isNative = nativeOrder == buffer.order();
+			final boolean useLE = nativeOrder == ByteOrder.LITTLE_ENDIAN;
+			final long pattern = SWARUtil.compilePattern(value);
+			for (int i = 0, offset = fromIndex - Long.BYTES; i < longCount; i++, offset -= Long.BYTES) {
+				final long word = useLE ? buffer._getLongLE(offset) : buffer._getLong(offset);
+				final long result = SWARUtil.applyPattern(word, pattern);
+				if (result != 0) {
+					return offset + Long.BYTES - 1 - SWARUtil.getIndex(result, !isNative);
+				}
+			}
+		}
+		return unrolledLastIndexOf(buffer, fromIndex - (longCount << 3), length & 7, value);
+	}
+	
+	private static int linearLastIndexOf(final AbstractByteBuf buffer, final int fromIndex, final int toIndex, 
+			final byte value) {
+		for (int i = fromIndex - 1; i >= toIndex; i--) {
+			if (buffer._getByte(i) == value ) {
+				return i;
+			}
+		}
+		return -1;
+	}
+	
+	private static int unrolledLastIndexOf(final AbstractByteBuf buffer, final int fromIndex, final int byteCount,
+			final byte value) {
+		assert byteCount >= 0 && byteCount < 8;
+		if (byteCount == 0) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 1) == value) {
+			return fromIndex - 1;
+		}
+		if (byteCount == 1) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 2) == value) {
+			return fromIndex - 2;
+		}
+		if (byteCount == 2) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 3)== value) {
+			return fromIndex - 3;
+		}
+		if (byteCount == 3) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 4) == value) {
+			return fromIndex - 4;
+		}
+		if (byteCount == 4) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 5) == value) {
+			return fromIndex - 5;
+		}
+		if (byteCount == 5) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 6) == value) {
+			return fromIndex - 6;
+		}
+		if (byteCount == 6) {
+			return -1;
+		}
+		if (buffer._getByte(fromIndex - 7) == value ) {
+			return fromIndex - 7;
+		}
+		return -1;
+	}
+	
+	private static CharSequence checkCharSequenceBounds(CharSequence seq, int start, int end) {
+		if (MathUtil.isOutOfBounds(start, end - start, seq.length())) {
+			throw new IndexOutOfBoundsException("expected: 0 <= start(" + start + ") <= end (" + end 
+					+ ") <= seq.length(" + seq.length() + ')');
+		}
+		return seq;
+	}
+	
+	public static ByteBuf writeUtf8(ByteBufAllocator alloc, CharSequence seq) {
+		ByteBuf buf = alloc.buffer(utf8MaxBytes(seq));
+		writeUtf8(buf, seq);
+		return buf;
+	}
+	
+	public static int writeUtf8(ByteBuf buf, CharSequence seq) {
+		int seqLength = seq.length();
+		return reserveAndWriteUtf8Seq(buf, seq, 0, seqLength, utf8MaxBytes(seqLength));
+	}
+	
+	public static int writeUtf8(ByteBuf buf, CharSequence seq, int start, int end) {
+		checkCharSequenceBounds(seq, start, end);
+		return reserveAndWriteUtf8Seq(buf, seq, start, end, utf8MaxBytes(end - start));
+	}
+	
+	public static int reserveAndWriteUtf8(ByteBuf buf, CharSequence seq, int reserveBytes) {
+		return reserveAndWriteUtf8Seq(buf, seq, 0, seq.length(), reserveBytes);
+	}
+	
+	public static int reserveAndWriteUtf8(ByteBuf buf, CharSequence seq, int start, int end, int reserveBytes) {
+		return reserveAndWriteUtf8Seq(buf, checkCharSequenceBounds(seq, start, end), start, end, reserveBytes);
+	}
+	
+	private static int reserveAndWriteUtf8Seq(ByteBuf buf, CharSequence seq, int start, int end, int reserveBytes) {
+		for (;;) {
+			if (buf instanceof WrappedCompositeByteBuf) {
+				buf = buf.unwrap();
+			} else if (buf instanceof  AbstractByteBuf) {
+				AbstractByteBuf  byteBuf = (AbstractByteBuf) buf;
+				byteBuf.ensureWritable0(reserveBytes);
+				int written = writeUtf8(byteBuf, byteBuf.writerIndex, reserveBytes, seq, start, end);
+				byteBuf.writerIndex += written;
+				return written;
+			} else if (buf instanceof WrappedByteBuf) {
+				buf = buf.unwrap();
+			} else {
+				byte[] bytes = seq.subSequence(start, end).toString().getBytes(CharsetUtil.UTF_8);
+				buf.writeBytes(bytes);
+				return bytes.length;
+			}
+		}
+	}
+	
+	static int writeUtf8(AbstractByteBuf buffer, int writerIndex, int reservedBytes, CharSequence seq, int len) {
+		return writeUtf8(buffer, writerIndex, reservedBytes, seq, 0, len);
+	}
+	
+	static int writeUtf8(AbstractByteBuf buffer, int writerIndex, int reservedBytes,
+			CharSequence seq, int start, int end) {
+		if (seq instanceof AsciiString) {
+			writeAsciiString(buffer, writerIndex, (AsciiString) seq, start, end);
+			return end - start;
+		}
+		if (PlatformDependent.hasUnsafe()) {
+			if (buffer.hasArray()) {
+				return unsafeWriteUtf8(buffer.array(), PlatformDependent.byteArrayBaseOffset(),
+						buffer.arrayOffset() + writerIndex, seq, start, end);
+			}
+			if (buffer.hasMemoryAddress()) {
+				return unsafeWriteUtf8(null, buffer.memoryAddress(), writerIndex, seq, start, end);
+			}
+		} else {
+			if (buffer.hasArray()) {
+				return safeArrayWriteUtf8(buffer.array(), buffer.arrayOffset() + writerIndex, seq, start, end);
+			} 
+			if (buffer.isDirect() && buffer.nioBufferCount() == 1) {
+				final ByteBuffer internalDirectBuffer = buffer.internalNioBuffer(writerIndex, reservedBytes);
+				final int bufferPosition = internalDirectBuffer.position();
+				return safeDirectWriteUtf8(internalDirectBuffer, bufferPosition, seq, start, end);
+			}
+		}
+		return safeWriteUtf8(buffer, writerIndex, seq, start, end);
+	}
+	
+	static void writeAsciiString(AbstractByteBuf buffer, int writerIndex, AsciiString seq, int start, int end) {
+		final int begin = seq.arrayOffset() + start;
+		final int length = end - start;
+		if (PlatformDependent.hasUnsafe()) {
+			if (buffer.hasArray()) {
+				PlatformDependent.copyMemory(seq.array(), begin, 
+						buffer.array(), buffer.arrayOffset() + writerIndex, length);
+				return;
+			}
+			if (buffer.hasMemoryAddress()) {
+				PlatformDependent.copyMemory(seq.array(), begin, buffer.memoryAddress() + writerIndex, length);
+				return;
+			}
+		}
+		if (buffer.hasArray()) {
+			System.arraycopy(seq.array(), begin, buffer.array(), buffer.arrayOffset() + writerIndex, length);
+			return;
+		}
+		buffer.setBytes(writerIndex, seq.array(), begin, length);
+	}
+	
+	private static int safeDirectWriteUtf8(ByteBuffer buffer, int writerIndex, CharSequence seq, int start, int end) {
+		assert !(seq instanceof AsciiString);
+		int oldWriterIndex = writerIndex;
+		for (int i = start; i < end; i++) {
+			char c = seq.charAt(i);
+			if (c < 0x80) {
+				buffer.put(writerIndex++, (byte) c);
+			} else if (c < 0x800) {
+				buffer.put(writerIndex++, (byte)(0xc0 | (c >> 6)));
+				buffer.put(writerIndex++, (byte)(0x80 | (c & 0x3f)));
+			} else if (isSurrogate(c)) {
+				if (!Character.isHighSurrogate(c)) {
+					buffer.put(writerIndex++, WRITE_UTF_UNKNOWN);
+					continue;
+				}
+				if (++i == end) {
+					buffer.put(writerIndex++, WRITE_UTF_UNKNOWN);
+					break;
+				}
+				char c2 = seq.charAt(i);
+				if (!Character.isLowSurrogate(c2)) {
+					buffer.put(writerIndex++, WRITE_UTF_UNKNOWN);
+					buffer.put(writerIndex++, Character.isHighSurrogate(c2) ? WRITE_UTF_UNKNOWN : (byte) c2);
+				} else {
+					int codePoint = Character.toCodePoint(c, c2);
+					buffer.put(writerIndex++, (byte)(0xf0 | (codePoint >> 18)));
+					buffer.put(writerIndex++, (byte)(0x80 | ((codePoint >> 12) & 0x3f)));
+					buffer.put(writerIndex++, (byte)(0x80 | ((codePoint >> 6) & 0x3f)));
+					buffer.put(writerIndex++, (byte)(0x80 | ((codePoint & 0x3f))));
+				}
+			} else {
+				buffer.put(writerIndex++, (byte)(0xe0 | (c >> 12)));
+				buffer.put(writerIndex++, (byte)(0x80 | ((c >> 6) & 0x3f)));
+				buffer.put(writerIndex++, (byte)(0x80 | (c & 0x3f)));
+			}
+		}
+		return writerIndex - oldWriterIndex;
+	}
+	
+	private static int safeWriteUtf8(AbstractByteBuf buffer, int writerIndex, CharSequence seq, int start, int end) {
+		assert !(seq instanceof AsciiString);
+		int oldWriterIndex = writerIndex;
+		for (int i = start; i < end; i++) {
+			char c = seq.charAt(i);
+			if (c < 0x80) {
+				buffer._setByte(writerIndex++, (byte) c);
+			} else if (c < 0x800) {
+				buffer._setByte(writerIndex++, (byte) (0xc0 | (c >> 6)));
+				buffer._setByte(writerIndex++, (byte) (0x80 | (c & 0x3f)));
+			} else if (isSurrogate(c)) {
+				if (!Character.isHighSurrogate(c)) {
+					buffer._setByte(writerIndex++, WRITE_UTF_UNKNOWN);
+					continue;
+				}
+				if (++i == end) {
+					buffer._setByte(writerIndex++, WRITE_UTF_UNKNOWN);
+					break;
+				}
+				char c2 = seq.charAt(i);
+				if (!Character.isLowSurrogate(c2)) {
+					buffer._setByte(writerIndex++, WRITE_UTF_UNKNOWN);
+					buffer._setByte(writerIndex++, Character.isHighSurrogate(c2) ? WRITE_UTF_UNKNOWN : c2);
+				} else {
+					int codePoint = Character.toCodePoint(c, c2);
+					buffer._setByte(writerIndex++, (byte) (0xf0 | (codePoint >> 18)));
+					buffer._setByte(writerIndex++, (byte) (0x80 | ((codePoint >> 12) & 0x3f)));
+					buffer._setByte(writerIndex++, (byte) (0x80 | ((codePoint >> 6) & 0x3f)));
+					buffer._setByte(writerIndex++, (byte) (0x80 | (codePoint & 0x3f)));
+				}
+			} else {
+				buffer._setByte(writerIndex++, (byte) (0xe0 | (c >> 12)));
+				buffer._setByte(writerIndex++, (byte) (0x80 | ((c >> 6) & 0x3f)));
+				buffer._setByte(writerIndex++, (byte) (0x80 | (c & 0x3f)));
+			}
+		}
+		return writerIndex - oldWriterIndex;
+	}
+	
+	private static int safeArrayWriteUtf8(byte[] buffer, int writerIndex, CharSequence seq, int start, int end) {
+		int oldWriterIndex = writerIndex;
+		for (int i = start; i < end; i++) {
+			char c = seq.charAt(i);
+			if (c < 0x80) {
+				buffer[writerIndex++] = (byte) c;
+			} else if (c < 0x800) {
+				buffer[writerIndex++] = (byte) (0xc0 | (c >> 6));
+				buffer[writerIndex++] = (byte) (0x80 | (c & 0x3f));
+			} else if (isSurrogate(c)) {
+				if (!Character.isHighSurrogate(c)) {
+					buffer[writerIndex++] = WRITE_UTF_UNKNOWN;
+					continue;
+				}
+				if (++i == end) {
+					buffer[writerIndex++] = WRITE_UTF_UNKNOWN;
+					break;
+				}
+				char c2 = seq.charAt(i);
+				if (!Character.isLowSurrogate(c2)) {
+					buffer[writerIndex++] = WRITE_UTF_UNKNOWN;
+					buffer[writerIndex++] = (byte)(Character.isHighSurrogate(c2) ? WRITE_UTF_UNKNOWN : c2);
+				} else {
+					int codePoint = Character.toCodePoint(c, c2);
+					buffer[writerIndex++] = (byte) (0xf0 | (codePoint >> 18));
+					buffer[writerIndex++] = (byte) (0x80 | ((codePoint >> 12) & 0x3f));
+					buffer[writerIndex++] = (byte) (0x80 | ((codePoint >> 6) & 0x3f));
+					buffer[writerIndex++] = (byte) (0x80 | (codePoint & 0x3f));
+				}
+			} else {
+				buffer[writerIndex++] = (byte) (0xe0 | (c >> 12));
+				buffer[writerIndex++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+				buffer[writerIndex++] = (byte) (0x80 | (c & 0x3f));
+			}
+		}
+		return writerIndex - oldWriterIndex;
+	}
+	
+	private static int unsafeWriteUtf8(byte[] buffer, long memoryOffset, int writerIndex,
+			CharSequence seq, int start, int end) {
+		assert !(seq instanceof AsciiString);
+		long writerOffset = memoryOffset + writerIndex;
+		final long oldWriterOffset = writerOffset;
+		for (int i = start; i < end; i++) {
+			char c = seq.charAt(i);
+			if (c < 0x80) {
+				PlatformDependent.putByte(buffer, writerOffset++, (byte) c);
+			} else if (c < 0x800) {
+				PlatformDependent.putByte(buffer, writerOffset++, (byte) (0xc0 | (c >> 6)));
+				PlatformDependent.putByte(buffer, writerOffset++, (byte) (0x80 | (c & 0x3f)));
+			} else if (isSurrogate(c)) {
+				if (!Character.isHighSurrogate(c)) {
+					PlatformDependent.putByte(buffer, writerOffset++, WRITE_UTF_UNKNOWN);
+					continue;
+				}
+				if (++i == end) {
+					PlatformDependent.putByte(buffer, writerOffset++, WRITE_UTF_UNKNOWN);
+					break;
+				}
+				char c2 = seq.charAt(i);
+				if (!Character.isLowSurrogate(c2)) {
+					PlatformDependent.putByte(buffer, writerOffset++, WRITE_UTF_UNKNOWN);
+					PlatformDependent.putByte(buffer, writerOffset++, 
+							(byte) (Character.isHighSurrogate(c2) ? WRITE_UTF_UNKNOWN : c2));
+				} else {
+					int codePoint = Character.toCodePoint(c, c2);
+					PlatformDependent.putByte(buffer, writerOffset++, (byte) (0xf0 | (codePoint >> 18)));
+					PlatformDependent.putByte(buffer, writerOffset++, (byte) (0x80 | ((codePoint >> 12) & 0x3f)));
+					PlatformDependent.putByte(buffer, writerOffset++, (byte) (0x80 | ((codePoint >> 6) & 0x3f)));
+					PlatformDependent.putByte(buffer, writerOffset++, (byte) (0x80 | (codePoint & 0x3f)));
+				} 
+			} else {
+				PlatformDependent.putByte(buffer, writerOffset++, (byte)(0xe0 | (c >> 12)));
+				PlatformDependent.putByte(buffer, writerOffset++, (byte)(0x80 | ((c >> 6) & 0x3f)));
+				PlatformDependent.putByte(buffer, writerOffset++, (byte)(0x80 | (c & 0x3f)));
+			}
+		}
+		return (int) (writerOffset - oldWriterOffset); 
+	}
+	
+	public static int utf8MaxBytes(final int seqLength) {
+		return seqLength * MAX_BYTES_PER_CHAR_UTF8;
+	}
+	
+	public static int utf8MaxBytes(final CharSequence seq) {
+		if (seq instanceof AsciiString) {
+			return seq.length();
+		}
+		return utf8MaxBytes(seq.length());
+	}
+	
+	public static int utf8Bytes(final CharSequence seq) {
+		return utf8Bytes(seq, 0, seq.length());
+	}
+	
+	public static int utf8Bytes(final CharSequence seq, int start, int end) {
+		return utf8ByteCount(checkCharSequenceBounds(seq, start, end), start, end);
+	}
+	
+	private static int utf8ByteCount(final CharSequence seq, int start, int end) {
+		if (seq instanceof AsciiString) {
+			return end - start;
+		}
+		int i = start;
+		while (i < end && seq.charAt(i) < 0x80) {
+			++i;
+		}
+		return i < end ? (i - start) + utf8BytesNonAscii(seq, i, end) : i - start;
+	}
+	
+	private static int utf8BytesNonAscii(final CharSequence seq, final int start, final int end) {
+		int encodedLength = 0;
+		for (int i = start; i < end; i++) {
+			final char c = seq.charAt(i);
+			if (c < 0x800) {
+				encodedLength += ((0x7f - c) >>> 31) + 1;
+			} else if (isSurrogate(c)) {
+				if (!Character.isHighSurrogate(c)) {
+					encodedLength++;
+					continue;
+				}
+				if (++i == end) {
+					encodedLength++;
+					break;
+				}
+				if (!Character.isLowSurrogate(seq.charAt(i))) {
+					encodedLength += 2;
+					continue;
+				}
+				encodedLength += 4;
+			} else {
+				encodedLength += 3;
+			}
+		}
+		return encodedLength;
+	}
+	
+	public static ByteBuf writeAscii(ByteBufAllocator alloc, CharSequence seq) {
+		ByteBuf buf = alloc.buffer(seq.length());
+		writeAscii(buf, seq);
+		return buf;
+	}
+	
+	public static int writeAscii(ByteBuf buf, CharSequence seq) {
+		for (;;) {
+			if (buf instanceof WrappedCompositeByteBuf) {
+				buf = buf.unwrap();
+			} else if (buf instanceof AbstractByteBuf) {
+				final int len = seq.length();
+				AbstractByteBuf byteBuf = (AbstractByteBuf) buf;
+				byteBuf.ensureWritable0(len);
+				if (seq instanceof AsciiString) {
+					writeAsciiString(byteBuf, byteBuf.writerIndex, (AsciiString) seq, 0, len);
+				} else {
+					final int written = writeAscii(byteBuf, byteBuf.writerIndex, seq, len);
+					assert written == len;
+				}
+				byteBuf.writerIndex += len;
+				return len;
+			} else if (buf instanceof WrappedByteBuf) {
+				buf = buf.unwrap();
+			} else {
+				byte[] bytes = seq.toString().getBytes(CharsetUtil.US_ASCII);
+				buf.writeBytes(bytes);
+				return bytes.length;
+			}
+		}
+	}
+	
+	static int writeAscii(AbstractByteBuf buffer, int writerIndex, CharSequence seq, int len) {
+		if (seq instanceof AsciiString) {
+			writeAsciiString(buffer, writerIndex, (AsciiString) seq, 0, len);
+		} else {
+			writeAsciiCharSequence(buffer, writerIndex, seq, len);
+		}
+	}
+	
+	private static int writeAsciiCharSequence(AbstractByteBuf buffer, int writerIndex, CharSequence seq, int len) {
+		for (int i = 0; i < len; i++) {
+			buffer._setByte(writerIndex++, AsciiString.c2b(seq.charAt(i)));
+		}
+		return len;
+	}
+	
+	public static ByteBuf encodeString(ByteBufAllocator alloc, CharBuffer src, Charset charset) {
+		return encodeString0(alloc, false, src, charset, 0);
+	}
+	
+	public static ByteBuf encodeString(ByteBufAllocator alloc, CharBuffer src, Charset charset, int extraCapacity) {
+		return encodeString0(alloc, false, src, charset, extraCapacity);
+	}
+	
+	static ByteBuf encodeString0(ByteBufAllocator alloc, boolean enforceHeap, CharBuffer src, Charset charset,
+			int extraCapacity) {
+		final CharsetEncoder encoder = CharsetUtil.encoder(charset);
+		int length = (int) ((double) src.remaining() * encoder.maxBytesPerChar()) + extraCapacity;
+		boolean release = true;
+		final ByteBuf dst;
+		if (enforceHeap) {
+			dst = alloc.heapBuffer(length);
+		} else {
+			dst = alloc.buffer(length);
+		}
+		try {
+			final ByteBuffer dstBuf = dst.internalNioBuffer(dst.readerIndex(), length);
+			final int pos = dstBuf.position();
+			CoderResult cr = encoder.encode(src, dstBuf, true);
+			if (!cr.isUnderflow()) {
+				cr.throwException();
+			}
+			cr = encoder.flush(dstBuf);
+			if (!cr.isUnderflow()) {
+				cr.throwException();
+			}
+			dst.writerIndex(dst.writerIndex() + dstBuf.position() - pos);
+			release = false;
+			return dst;
+		} catch (CharacterCodingException x) {
+			throw new IllegalStateException(x);
+		} finally {
+			if (release) {
+				dst.release();
+			}
+		}
+	}
+	
+	@SuppressWarnings("deprecation")
+	static String decodeString(ByteBuf src, int readerIndex, int len, Charset charset) {
+		if (len == 0) {
+			return StringUtil.EMPTY_STRING;
+		}
+		final byte[] array;
+		final int offset;
+		if (src.hasArray()) {
+			array = src.array();
+			offset = src.arrayOffset() + readerIndex;
+		} else {
+			array = threadLocalTempArray(len);
+			offset = 0;
+			src.getBytes(readerIndex, array, 0, len);
+		}
+		if (CharsetUtil.US_ASCII.equals(charset)) {
+			return new String(array, 0, offset, len);
+		}
+		return new String(array, offset, len, charset);
+	}
+	
+	public static ByteBuf threadLocalDirectBuffer() {
+		if (THREAD_LOCAL_BUFFER_SIZE <= 0) {
+			return null;
+		}
+		if (PlatformDependent.hasUnsafe()) {
+			return ThreadLocalUnsafeDirectByteBuf.newInstance();
+		} else {
+			return ThreadLocalDirectByteBuf.newInstance();
+		}
+	}
+	
+	public static byte[] getBytes(ByteBuf buf) {
+		return getBytes(buf, buf.readerIndex(), buf.readableBytes());
+	}
+	
+	public static byte[] getBytes(ByteBuf buf, int start, int length) {
+		return getBytes(buf, start, length, true);
+	}
+	
+	public static byte[] getBytes(ByteBuf buf, int start, int length, boolean copy) {
+		int capacity = buf.capacity();
+		if (isOutOfBounds(start, length, capacity)) {
+			throw new IndexOutOfBoundsException("expected: " + "0 <= start(" + start + ") <= start + length(" + length 
+					+ ") <= " + "buf.capacity(" + capacity + ")");
+		}
+		
+		if (buf.hasArray()) {
+			int baseOffset = buf.arrayOffset() + start;
+			byte[] bytes = buf.array();
+			if (copy || baseOffset != 0 || length != bytes.length) {
+				return Arrays.copyOfRange(bytes, baseOffset, baseOffset + length);
+			} else {
+				return bytes;
+			}
+		}
+		
+		byte[] bytes = PlatformDependent.allocateUninitializedArray(length);
+		buf.getBytes(start, bytes);
+		return bytes;
+	}
+	
+	public static void copy(AsciiString src, ByteBuf dst) {
+		copy(src, 0, dst, src.length());
+	}
+	
+	public static void copy(AsciiString src, int srcIdx, ByteBuf dst, int dstIdx, int length) {
+		if (isOutOfBounds(srcIdx, length, src.length())) {
+			throw new IndexOutOfBoundsException("expected: " + "0 <= srcIdx(" + srcIdx + ") <= srcIdx + length(" 
+					+ length + ") <= srcLen(" + src.length() + ')');
+		}
+		
+		checkNotNull(dst, "dst").setBytes(dstIdx, src.array(), srcIdx + src.arrayOffset(), length);
+	}
+	
+	public static void copy(AsciiString src, int srcIdx, ByteBuf dst, int length) {
+		if (isOutOfBounds(srcIdx, length, src.length())) {
+			throw new IndexOutOfBoundsException("expected: " + "0 <= srcIdx(" + srcIdx + ") <= srcIdx + length(" 
+					+ length + ") <= srcLen(" + src.length() + ')');
+		}
+		checkNotNull(dst, "dst").writeBytes(src.array(), srcIdx + src.arrayOffset(), length);
+	}
+	
+	public static String prettyHexDump(ByteBuf buffer) {
+		return prettyHexDump(buffer, buffer.readerIndex(), buffer.readableBytes());
+	}
+	
+	public static String prettyHexDump(ByteBuf buffer, int offset, int length) {
+		return HexUtil.prettyHexDump(buffer, offset, length);
+	}
+	
+	public static void appendPrettyHexDump(StringBuilder dump, ByteBuf buf) {
+		HexUtil.appendPrettyHexDump(dump, buf, buf.readerIndex(), buf.readableBytes());
+	}
+	
+	private static final class HexUtil {
+		private static final char[] BYTE2CHAR = new char[256];
+		private static final char[] HEXDUMP_TABLE = new char[256 * 4];
+		private static final String[] HEXPADDING = new String[16];
+		private static final String[] HEXDUMP_ROWPREFIXES = new String[65536 >>> 4];
+		private static final String[] BYTE2HEX = new String[256];
+		private static final String[] BYTEPADDING = new String[16];
+		
+		static {
+			final char[] DIGITS = "0123456789abcdef".toCharArray();
+			for (int i = 0; i < 256; i++) {
+				HEXDUMP_TABLE[i << 1] = DIGITS[i >>> 4 & 0x0F];
+				HEXDUMP_TABLE[(i << 1) + 1] = DIGITS[i & 0x0F];
+			}
+			int i;
+			for (i = 0; i < HEXPADDING.length; i++) {
+				int padding = HEXPADDING.length - i;
+				StringBuilder buf = new StringBuilder(padding * 3);
+				for (int j = 0; j < padding; j++) {
+					buf.append("   ");
+				}
+				HEXPADDING[i] = buf.toString();
+			}
+			
+			// Generate the lookup table for the start-offset header in each row (up to 64kB).
+			for (i = 0; i < HEXDUMP_ROWPREFIXES.length; i++) {
+				StringBuilder buf = new StringBuilder(12);
+				buf.append(NEWLINE);
+				buf.append(Long.toHexString(i << 4 & 0xFFFFFFFFL | 0x100000000L));
+				buf.setCharAt(buf.length() - 9, '|');
+				buf.append('|');
+				HEXDUMP_ROWPREFIXES[i] = buf.toString();
+			}
+			
+			for (i = 0; i < BYTE2HEX.length; i++) {
+				BYTE2HEX[i] = ' ' + StringUtil.byteToHexStringPadded(i);
+			}
+			
+			for (i = 0; i < BYTEPADDING.length; i++) {
+				int padding = BYTEPADDING.length - i;
+				StringBuilder buf = new StringBuilder(padding);
+				for (int j = 0; j < padding; j++) {
+					buf.append(' ');
+				}
+				BYTEPADDING[i] = buf.toString();
+			}
+			
+			for (i = 0; i < BYTE2CHAR.length; i++) {
+				if (i <= 0x1f || i >= 0x7f) {
+					BYTE2CHAR[i] = '.';
+				} else {
+					BYTE2CHAR[i] = (char) i;
+				}
+			}
+		}
+		
+		private static String hexDump(ByteBuf buffer, int fromIndex, int length) {
+			checkPositiveOrZero(length, "length");
+			if (length == 0) {
+				return "";
+			}
+			int endIndex = fromIndex;
+			char[] buf = new char[length << 1];
+			int srcIdx = fromIndex;
+			int dstIdx = 0;
+			for (; srcIdx < endIndex; srcIdx++, dstIdx += 2) {
+				System.arraycopy(HEXDUMP_TABLE, buffer.getUnsignedByte(srcIdx) << 1,
+						buf, dstIdx, 2);
+			}
+			return new String(buf);
+		}
+		
+		private static String hexDump(byte[] array, int fromIndex, int length) {
+			checkPositiveOrZero(length, "length");
+			if (length == 0) {
+				return "";
+			}
+			int endIndex = fromIndex + length;
+			char[] buf = new char[length << 1];
+			
+			int srcIdx = fromIndex;
+			int dstIdx = 0;
+			for(; srcIdx < endIndex; srcIdx++, dstIdx += 2) {
+				System.arraycopy(HEXDUMP_TABLE, (array[srcIdx] & 0xFF) << 1,
+						buf, dstIdx, 2);
+			}
+			return new String(buf);
+		}
+		
+		private static String prettyHexDump(ByteBuf buffer, int offset, int length) {
+			if (length == 0) {
+				return StringUtil.EMPTY_STRING;
+			} else {
+				int rows = length / 16 + ((length % 15) == 0 ? 0 : 1) + 4;
+				StringBuilder buf = new StringBuilder(rows * 80);
+				appendPrettyHexDump(buf, buffer, offset, length);
+				return buf.toString();
+			}
+		}
+		
+		private static void appendPrettyHexDump(StringBuilder dump, ByteBuf buf, int offset, int length) {
+            if (isOutOfBounds(offset, length, buf.capacity())) {
+                throw new IndexOutOfBoundsException(
+                        "expected: " + "0 <= offset(" + offset + ") <= offset + length(" + length
+                                                    + ") <= " + "buf.capacity(" + buf.capacity() + ')');
+            }
+            if (length == 0) {
+                return;
+            }
+            dump.append(
+                              "         +-------------------------------------------------+" +
+                    NEWLINE + "         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |" +
+                    NEWLINE + "+--------+-------------------------------------------------+----------------+");
+
+            final int fullRows = length >>> 4;
+            final int remainder = length & 0xF;
+
+            // Dump the rows which have 16 bytes.
+            for (int row = 0; row < fullRows; row ++) {
+                int rowStartIndex = (row << 4) + offset;
+
+                // Per-row prefix.
+                appendHexDumpRowPrefix(dump, row, rowStartIndex);
+
+                // Hex dump
+                int rowEndIndex = rowStartIndex + 16;
+                for (int j = rowStartIndex; j < rowEndIndex; j ++) {
+                    dump.append(BYTE2HEX[buf.getUnsignedByte(j)]);
+                }
+                dump.append(" |");
+
+                // ASCII dump
+                for (int j = rowStartIndex; j < rowEndIndex; j ++) {
+                    dump.append(BYTE2CHAR[buf.getUnsignedByte(j)]);
+                }
+                dump.append('|');
+            }
+
+            // Dump the last row which has less than 16 bytes.
+            if (remainder != 0) {
+                int rowStartIndex = (fullRows << 4) + offset;
+                appendHexDumpRowPrefix(dump, fullRows, rowStartIndex);
+
+                int rowEndIndex = rowStartIndex + remainder;
+                for (int j = rowStartIndex; j < rowEndIndex; j ++) {
+                    dump.append(BYTE2HEX[buf.getUnsignedByte(j)]);
+                }
+                dump.append(HEXPADDING[remainder]);
+                dump.append(" |");
+
+                for (int j = rowStartIndex; j < rowEndIndex; j ++) {
+                    dump.append(BYTE2CHAR[buf.getUnsignedByte(j)]);
+                }
+                dump.append(BYTEPADDING[remainder]);
+                dump.append('|');
+            }
+
+            dump.append(NEWLINE +
+                        "+--------+-------------------------------------------------+----------------+");
+        }
+		
+		private static void appendHexDumpRowPrefix(StringBuilder dump, int row, int rowStartIndex) {
+			if (row < HEXDUMP_ROWPREFIXES.length) {
+				dump.append(HEXDUMP_ROWPREFIXES[row]);
+			} else {
+				dump.append(NEWLINE);
+				dump.append(Long.toHexString(rowStartIndex & 0xFFFFFFFFL | 0x100000000L));
+				dump.setCharAt(dump.length() - 9, '|');
+				dump.append('|');
+			}
+		}
+	}
+	
+	static final class ThreadLocalUnsafeDirectByteBuf extends UnpooledUnsafeDirectByteBuf {
+		private static final Recycler<ThreadLocalUnsafeDirectByteBuf> RECYCLER = 
+				new Recycler<ThreadLocalUnsafeDirectByteBuf>() {
+			@Override
+			protected ThreadLocalUnsafeDirectByteBuf newObject(Handle<ThreadLocalUnsafeDirectByteBuf> handle) {
+				return new ThreadLocalUnsafeDirectByteBuf(handle);
+			}
+		};
+		
+		static ThreadLocalUnsafeDirectByteBuf newInstance() {
+			ThreadLocalUnsafeDirectByteBuf buf = RECYCLER.get();
+			buf.resetRefCnt();
+			return buf;
+		}
+		private final EnhancedHandle<ThreadLocalUnsafeDirectByteBuf> handle;
+		private ThreadLocalUnsafeDirectByteBuf(Handle<ThreadLocalUnsafeDirectByteBuf> handle) {
+			super(UnpooledByteBufAllocator.DEFAULT, 256, Integer.MAX_VALUE);
+			this.handle = (EnhancedHandle<ThreadLocalUnsafeDirectByteBuf>) handle;
+		}
+		
+		@Override
+		protected void deallocate() {
+			if (capacity() > THREAD_LOCAL_BUFFER_SIZE) {
+				super.deallocate();
+			} else {
+				clear();
+				handle.unguardedRecycle(this);
+			}
+		}
+	}
+	
+	static final class ThreadLocalDirectByteBuf extends UnpooledDirectByteBuf {
+		private static final Recycler<ThreadLocalDirectByteBuf> RECYCLER = new Recycler<ThreadLocalDirectByteBuf>() {
+			@Override
+			protected ThreadLocalDirectByteBuf newObject(Handle<ThreadLocalDirectByteBuf> handle) {
+				return new ThreadLocalDirectByteBuf(handle);
+			}
+		};
+		
+		static ThreadLocalDirectByteBuf newInstance() {
+			ThreadLocalDirectByteBuf buf = RECYCLER.get();
+			buf.resetRefCnt();
+			return buf;
+		}
+		
+		private final EnhancedHandle<ThreadLocalDirectByteBuf> handle;
+		
+		private ThreadLocalDirectByteBuf(Handle<ThreadLocalDirectByteBuf> handle) {
+			super(UnpooledByteBufAllocator.DEFAULT, 256, Integer.MAX_VALUE);
+			this.handle = (EnhancedHandle<ThreadLocalDirectByteBuf>) handle;
+		}
+		
+		@Override
+		protected void deallocate() {
+			if (capacity() > THREAD_LOCAL_BUFFER_SIZE) {
+				super.deallocate();
+			} else {
+				clear();
+				handle.unguardedRecycle(this);
+			}
+		}
+	}
+	
+	public static boolean isText(ByteBuf buf, Charset charset) {
+		return isText(buf, buf.readerIndex(), buf.readableBytes(), charset);
+	}
+	
+	public static boolean isText(ByteBuf buf, int index, int length, Charset charset) {
+		checkNotNull(buf, "buf");
+		checkNotNull(charset, "charset");
+		final int maxIndex = buf.readerIndex() + buf.readableBytes();
+		if (index < 0 || length < 0 || index > maxIndex - length) {
+			throw new IndexOutOfBoundsException("index: " + index + " length: " + length);
+		}
+		if (charset.equals(CharsetUtil.UTF_8)) {
+			return isUtf8(buf, index, length);
+		} else if (charset.equals(CharsetUtil.US_ASCII)) {
+			return isAscii(buf, index, length);
+		} else {
+			CharsetDecoder decoder = CharsetUtil.decoder(charset, CodingErrorAction.REPORT, CodingErrorAction.REPORT);
+			try {
+				if (buf.nioBufferCount() == 1) {
+					decoder.decode(buf.nioBuffer(index, length));
+				} else {
+					ByteBuf heapBuffer = buf.alloc().heapBuffer(length);
+					try {
+						heapBuffer.writeBytes(buf, index, length);
+						decoder.decode(heapBuffer.internalNioBuffer(heapBuffer.readerIndex(), length));
+					} finally {
+						heapBuffer.release();
+					}
+				}
+				return true;
+			} catch (CharacterCodingException ignore) {
+				return false;
+			}
+		}
+	}
+	
+	private static final ByteProcessor FIND_NON_ASCII = new ByteProcessor() {
+		@Override
+		public boolean process(byte value) {
+			return value >= 0;
+		}
+	};
+	
+	private static boolean isAscii(ByteBuf buf, int index, int length) {
+		return buf.forEachByte(index, length, FIND_NON_ASCII) == -1;
+	}
+	
+	private static boolean isUtf8(ByteBuf buf, int index, int length) {
+        final int endIndex = index + length;
+        while (index < endIndex) {
+            byte b1 = buf.getByte(index++);
+            byte b2, b3, b4;
+            if ((b1 & 0x80) == 0) {
+                // 1 byte
+                continue;
+            }
+            if ((b1 & 0xE0) == 0xC0) {
+                // 2 bytes
+                //
+                // Bit/Byte pattern
+                // 110xxxxx    10xxxxxx
+                // C2..DF      80..BF
+                if (index >= endIndex) { // no enough bytes
+                    return false;
+                }
+                b2 = buf.getByte(index++);
+                if ((b2 & 0xC0) != 0x80) { // 2nd byte not starts with 10
+                    return false;
+                }
+                if ((b1 & 0xFF) < 0xC2) { // out of lower bound
+                    return false;
+                }
+            } else if ((b1 & 0xF0) == 0xE0) {
+                // 3 bytes
+                //
+                // Bit/Byte pattern
+                // 1110xxxx    10xxxxxx    10xxxxxx
+                // E0          A0..BF      80..BF
+                // E1..EC      80..BF      80..BF
+                // ED          80..9F      80..BF
+                // E1..EF      80..BF      80..BF
+                if (index > endIndex - 2) { // no enough bytes
+                    return false;
+                }
+                b2 = buf.getByte(index++);
+                b3 = buf.getByte(index++);
+                if ((b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80) { // 2nd or 3rd bytes not start with 10
+                    return false;
+                }
+                if ((b1 & 0x0F) == 0x00 && (b2 & 0xFF) < 0xA0) { // out of lower bound
+                    return false;
+                }
+                if ((b1 & 0x0F) == 0x0D && (b2 & 0xFF) > 0x9F) { // out of upper bound
+                    return false;
+                }
+            } else if ((b1 & 0xF8) == 0xF0) {
+                // 4 bytes
+                //
+                // Bit/Byte pattern
+                // 11110xxx    10xxxxxx    10xxxxxx    10xxxxxx
+                // F0          90..BF      80..BF      80..BF
+                // F1..F3      80..BF      80..BF      80..BF
+                // F4          80..8F      80..BF      80..BF
+                if (index > endIndex - 3) { // no enough bytes
+                    return false;
+                }
+                b2 = buf.getByte(index++);
+                b3 = buf.getByte(index++);
+                b4 = buf.getByte(index++);
+                if ((b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80) {
+                    // 2nd, 3rd or 4th bytes not start with 10
+                    return false;
+                }
+                if ((b1 & 0xFF) > 0xF4 // b1 invalid
+                        || (b1 & 0xFF) == 0xF0 && (b2 & 0xFF) < 0x90    // b2 out of lower bound
+                        || (b1 & 0xFF) == 0xF4 && (b2 & 0xFF) > 0x8F) { // b2 out of upper bound
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+	
+	static void readBytes(ByteBufAllocator allocator, ByteBuffer buffer, int position, int length, OutputStream out) 
+		throws IOException {
+		if (buffer.hasArray()) {
+			out.write(buffer.array(), position + buffer.arrayOffset(), length);
+		} else {
+			int chunkLen = Math.min(length, WRITE_CHUNK_SIZE);
+			buffer.clear().position(position).limit(position + length);
+			
+			if (length <= MAX_TL_ARRAY_LEN || !allocator.isDirectBufferPooled()) {
+				getBytes(buffer, threadLocalTempArray(chunkLen), 0, chunkLen, out, length);
+			} else {
+				ByteBuf tmpBuf = allocator.heapBuffer(chunkLen);
+				try {
+					byte[] tmp = tmpBuf.array();
+					int offset = tmpBuf.arrayOffset();
+					getBytes(buffer, tmp, offset, chunkLen, out, length);
+				} finally {
+					tmpBuf.release();
+				}
+			}
+		}
+	}
+	
+	private static void getBytes(ByteBuffer inBuffer, byte[] in, int inOffset, int inLen, OutputStream out, int outLen) 
+		throws IOException {
+		do {
+			int len = Math.min(inLen, outLen);
+			inBuffer.get(in, inOffset, len);
+			out.write(in, inOffset, len);
+			outLen -= 0;
+		} while (outLen > 0);
+	}
+	
+	public static void setLeakListener(ResourceLeakDetector.LeakListener leakListener) {
+		AbstractByteBuf.leakDetector.setLeakListener(leakListener);
+	}
+	
+	private ByteBufUtil() {}
 }
