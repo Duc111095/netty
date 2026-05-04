@@ -8,7 +8,7 @@ public interface SizeClassesMetric {
 	
 	int pageIdx2size(int pageIdx);
 	
-	int pageIdx2sizeComute(int pageIdx);
+	long pageIdx2sizeCompute(int pageIdx);
 	
 	int size2SizeIdx(int size);
 	

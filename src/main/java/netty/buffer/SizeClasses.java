@@ -115,52 +115,188 @@ final class SizeClasses implements SizeClassesMetric {
 		};
 	}
 	
+	private static int[] newIdx2SizeTab(short[][] sizeClasses, int nSizes, int directMemoryCacheAlignment) {
+		int[] sizeIdx2sizeTab = new int[nSizes];
+		for (int i = 0; i < nSizes; i++) {
+			short[] sizeClass = sizeClasses[i];
+			sizeIdx2sizeTab[i] = sizeOf(sizeClass, directMemoryCacheAlignment);
+		}
+		return sizeIdx2sizeTab;
+	}
+	
+	private static int calculateSize(int log2Group, int nDelta, int log2Delta) {
+		return (1 << log2Group) + (nDelta << log2Delta);
+	}
+	
+	private static int sizeOf(short[] sizeClass, int directMemoryCacheAlignment) {
+		int log2Group = sizeClass[LOG2GROUP_IDX];
+		int log2Delta = sizeClass[LOG2DELTA_IDX];
+		int nDelta = sizeClass[NDELTA_IDX];
+		
+		int size = calculateSize(log2Group, nDelta, log2Delta);
+		return alignSizeIfNeeded(size, directMemoryCacheAlignment);
+	}
+	
+	private static int[] newPageIdx2sizeTab(short[][] sizeClasses, int nSizes, int nPSizes,
+			int directMemoryCacheAlignment) {
+		int[] pageIdx2sizeTab = new int[nPSizes];
+		int pageIdx = 0;
+		for (int i = 0; i < nSizes; i++) {
+			short[] sizeClass = sizeClasses[i];
+			if (sizeClass[PAGESIZE_IDX] == yes) {
+				pageIdx2sizeTab[pageIdx++] = sizeOf(sizeClass, directMemoryCacheAlignment);
+			}
+		}
+		return pageIdx2sizeTab;
+	} 
+	
+	private static int[] newSize2idxTab(int lookupMaxSize, short[][] sizeClasses) {
+		int[] size2idxTab = new int[lookupMaxSize >> LOG2_QUANTUM];
+		int idx = 0;
+		int size = 0;
+		
+		for (int i = 0; size <= lookupMaxSize; i++) {
+			int log2Delta = sizeClasses[i][LOG2DELTA_IDX];
+			int times = 1 << log2Delta - LOG2_QUANTUM;
+			
+			while (size <= lookupMaxSize && times-- > 0) {
+				size2idxTab[idx++] = i;
+				size = idx + 1 << LOG2_QUANTUM;
+			}
+		}
+		return size2idxTab;
+	}
+	
 	@Override
 	public int sizeIdx2size(int sizeIdx) {
-		// TODO Auto-generated method stub
-		return 0;
+		return sizeIdx2sizeTab[sizeIdx];
 	}
 
 	@Override
 	public int sizeIdx2sizeCompute(int sizeIdx) {
-		// TODO Auto-generated method stub
-		return 0;
+		int group = sizeIdx >> LOG2_SIZE_CLASS_GROUP;
+		int mod = sizeIdx & (1 << LOG2_SIZE_CLASS_GROUP) - 1;
+		
+		int groupSize = group == 0 ? 0 :
+			1 << LOG2_QUANTUM + LOG2_SIZE_CLASS_GROUP - 1 << group;
+		
+		int shift = group == 0 ? 1 : group;
+		int lgDelta = shift + LOG2_QUANTUM - 1;
+		int modSize = mod + 1 << lgDelta;
+		
+		return groupSize + modSize;
 	}
 
 	@Override
 	public int pageIdx2size(int pageIdx) {
-		// TODO Auto-generated method stub
-		return 0;
+		return pageIdx2sizeTab[pageIdx];
 	}
 
 	@Override
-	public int pageIdx2sizeComute(int pageIdx) {
-		// TODO Auto-generated method stub
-		return 0;
+	public long pageIdx2sizeCompute(int pageIdx) {
+		int group = pageIdx >> LOG2_SIZE_CLASS_GROUP;
+		int mod = pageIdx & (1 << LOG2_SIZE_CLASS_GROUP) - 1;
+		
+		long groupSize = group == 0 ? 0 :
+			1L << pageShifts + LOG2_SIZE_CLASS_GROUP - 1 << group;
+		
+		int shift = group == 0 ? 1 : group;
+		int log2Delta = shift + pageShifts - 1;
+		int modSize = mod + 1 << log2Delta;
+		
+		return groupSize + modSize;
 	}
 
 	@Override
 	public int size2SizeIdx(int size) {
-		// TODO Auto-generated method stub
-		return 0;
+		if (size == 0) {
+			return 0;
+		}
+		if (size > chunkSize) {
+			return nSizes;
+		}
+		size = alignSizeIfNeeded(size, directMemoryCacheAlignment);
+		
+		if (size <= lookupMaxSize) {
+			return size2idxTab[size - 1 >> LOG2_QUANTUM];
+		}
+		
+		int x = log2((size << 1) - 1);
+		int shift = x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1 
+				? 0 : x - (LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM);
+		
+		int group = shift << LOG2_SIZE_CLASS_GROUP;
+		int log2Delta = x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1
+				? LOG2_QUANTUM : x - LOG2_SIZE_CLASS_GROUP - 1;
+		int mod = size - 1 >> log2Delta & (1 << LOG2_SIZE_CLASS_GROUP) - 1;
+		
+		return group + mod;
 	}
 
 	@Override
 	public int pages2pageIdx(int pages) {
-		// TODO Auto-generated method stub
-		return 0;
+		return pages2pageIdxCompute(pages, false);
 	}
 
 	@Override
 	public int pages2pageIdxFloor(int pages) {
-		// TODO Auto-generated method stub
-		return 0;
+		return pages2pageIdxCompute(pages, true);
+	}
+	
+	private int pages2pageIdxCompute(int pages, boolean floor) {
+		int pageSize = pages << pageShifts;
+		if (pageSize > chunkSize) {
+			return nPSizes;
+		}
+		
+		int x = log2((pageSize << 1) - 1);
+		
+		int shift = x < LOG2_SIZE_CLASS_GROUP + pageShifts 
+				? 0 : x - (LOG2_SIZE_CLASS_GROUP + pageShifts);
+		
+		int group = shift << LOG2_SIZE_CLASS_GROUP;
+		int log2Delta = x < LOG2_SIZE_CLASS_GROUP + pageShifts + 1 ?
+				pageShifts : x - LOG2_SIZE_CLASS_GROUP - 1;
+		
+		int mod = pageSize - 1 >> log2Delta & (1 << LOG2_SIZE_CLASS_GROUP) - 1;
+		
+		int pageIdx = group + mod;
+		
+		if (floor && pageIdx2sizeTab[pageIdx] > pages << pageShifts) {
+			pageIdx --;
+		}
+		return pageIdx;
+	}
+	
+	private static int alignSizeIfNeeded(int size, int directMemoryCacheAlignment) {
+		if (directMemoryCacheAlignment <= 0) {
+			return size;
+		}
+		int delta = size & directMemoryCacheAlignment - 1;
+		return delta == 0 ? size : size + directMemoryCacheAlignment - delta;
 	}
 
 	@Override
 	public int normalizeSize(int size) {
-		// TODO Auto-generated method stub
-		return 0;
+		if (size == 0) {
+			return sizeIdx2sizeTab[0];
+		}
+		size = alignSizeIfNeeded(size, directMemoryCacheAlignment);
+		if (size <= lookupMaxSize) {
+			int ret = sizeIdx2sizeTab[size2idxTab[size - 1 >> LOG2_QUANTUM]];
+			assert ret == normalizeSizeCompute(size);
+			return ret;
+		}
+		
+		return normalizeSizeCompute(size);
 	}
 	
+	private static int normalizeSizeCompute(int size) {
+		int x = log2((size << 1) - 1);
+		int log2Delta = x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1 
+				? LOG2_QUANTUM : x - LOG2_SIZE_CLASS_GROUP - 1;
+		int delta = 1 <<  log2Delta;
+		int delta_mask = delta - 1;
+		return size + delta_mask & ~delta_mask;
+	}
 }
