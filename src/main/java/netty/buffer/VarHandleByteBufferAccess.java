@@ -46,7 +46,7 @@ final class VarHandleByteBufferAccess {
 		return (long) PlatformDependent.longBeByteBufferView().get(buffer, index);
 	}
 	
-	static void setLongBE(ByteBuffer buffer, int index, int value) {
+	static void setLongBE(ByteBuffer buffer, int index, long value) {
 		PlatformDependent.longBeByteBufferView().set(buffer, index, value);
 	}
 	

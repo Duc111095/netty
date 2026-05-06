@@ -249,7 +249,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 		}
 	}
 	
-	protected final void trimIndicesToCapacity(int newCapacity) {
+	protected final void trimIndiciesToCapacity(int newCapacity) {
 		if (writerIndex() > newCapacity) {
 			setIndex0(Math.min(readerIndex(), newCapacity), newCapacity);
 		}
@@ -1038,6 +1038,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
 	@Override
 	public ByteBuf writeBytes(byte[] src) {
 		writeBytes(src, 0, src.length);
+		return this;
+	}
+	
+	@Override
+	public ByteBuf writeBytes(ByteBuf src) {
+		writeBytes(src, src.readableBytes());
 		return this;
 	}
 	

@@ -29,7 +29,7 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-17">
 		<attributes>
 			<attribute name="module" value="true"/>
-			<attribute name="limit-modules" value="java.se,jdk.accessibility,jdk.attach,jdk.compiler,jdk.httpserver,jdk.jartool,jdk.jconsole,jdk.jdi,jdk.management,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.dynalink,jdk.incubator.foreign,jdk.incubator.vector,jdk.javadoc,jdk.jfr,jdk.jshell,jdk.management.jfr,jdk.net,jdk.nio.mapmode,jdk.unsupported.desktop,jdk.jsobject,jdk.xml.dom"/>
+			<attribute name="limit-modules" value="java.se,jdk.accessibility,jdk.attach,jdk.compiler,jdk.httpserver,jdk.jartool,jdk.jconsole,jdk.jdi,jdk.management,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.dynalink,jdk.incubator.foreign,jdk.incubator.vector,jdk.javadoc,jdk.jshell,jdk.management.jfr,jdk.net,jdk.nio.mapmode,jdk.unsupported.desktop,jdk.jsobject,jdk.xml.dom"/>
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
