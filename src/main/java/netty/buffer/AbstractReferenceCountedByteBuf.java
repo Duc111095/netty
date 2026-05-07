@@ -54,6 +54,11 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
 		return handleRelease(RefCnt.release(refCnt));
 	}
 	
+	@Override
+	public boolean release(int decrement) {
+		return handleRelease(RefCnt.release(refCnt, decrement));
+	}
+	
 	private boolean handleRelease(boolean result) {
 		if (result) {
 			deallocate();

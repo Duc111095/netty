@@ -423,6 +423,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
 	}
 	
 	@Override
+	public long getUnsignedIntLE(int index) {
+		return getIntLE(index) & 0xFFFFFFFFL;
+	}
+	
+	@Override
 	public long getLong(int index) {
 		checkIndex(index, 8);
 		return _getLong(index);
@@ -737,6 +742,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
 	}
 	
 	@Override
+	public int readUnsignedShortLE() {
+		return readShortLE() & 0xFFFF;
+	}
+
+	
+	@Override
 	public int readMedium() {
 		int value = readUnsignedMedium();
 		if ((value & 0x800000) != 0) {
@@ -868,6 +879,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
 	public ByteBuf readBytes(byte[] dst) {
 		return readBytes(dst, 0, dst.length);
 	}
+	
+	@Override
+	public ByteBuf readBytes(ByteBuf dst) {
+		readBytes(dst, dst.writableBytes());
+		return this;
+	}
+	
 	
 	@Override
 	public ByteBuf readBytes(ByteBuf dst, int length) {
@@ -1437,4 +1455,5 @@ public abstract class AbstractByteBuf extends ByteBuf {
 	ByteBuffer _internalNioBuffer() {
 		return internalNioBuffer(0, capacity());
 	}
+	
 }

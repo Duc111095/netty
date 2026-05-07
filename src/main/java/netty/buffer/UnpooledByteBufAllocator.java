@@ -34,15 +34,15 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
 	@Override
 	protected ByteBuf newHeapBuffer(int initialCapacity, int maxCapacity) {
 		return PlatformDependent.hasUnsafe() ?
-				new InstrumentUnpooledUnsafeHeapByteBuf(this, initialCapacity, maxCapacity) :
-				new InstrumentUnpooledHeapByteBuf(this, initialCapacity, maxCapacity);
+				new InstrumentedUnpooledUnsafeHeapByteBuf(this, initialCapacity, maxCapacity) :
+				new InstrumentedUnpooledHeapByteBuf(this, initialCapacity, maxCapacity);
 	}
 	
 	@Override
 	protected ByteBuf newHeapBuffer(int initialCapacity, int maxCapacity) {
 		final ByteBuf buf;
 		if (PlatformDependent.hasUnsafe()) {
-			buf = noCleaner ? new InstrumentUnpooledUnsafeNoCleanerDirectByteBuf(this, initialCapacity, maxCapacity) :
+			buf = noCleaner ? new InstrumentedUnpooledUnsafeNoCleanerDirectByteBuf(this, initialCapacity, maxCapacity) :
 				new InstrumentedUnpooledUnsafeDirectByteBuf(this, initialCapacity, maxCapacity);
 		} else {
 			buf = new InstrumentedUnpooledDirectByteBuf(this, initialCapacity, maxCapacity);
@@ -88,7 +88,131 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
 		metric.heapCounter.add(-amount);
 	}
 	
+	private static final class InstrumentedUnpooledUnsafeHeapByteBuf extends UnpooledUnsafeHeapBuffer {
+		InstrumentedUnpooledUnsafeHeapByteBuf(UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+			super(alloc, initialCapacity, maxCapacity);	
+		}
+		
+		@Override
+		protected byte[] allocateArray(int initialCapacity) {
+			byte[] bytes = super.allocateArray(initialCapacity);
+			((UnpooledByteBufAllocator) alloc()).incrementHeap(bytes.length);
+			return bytes;
+		}
+		
+		@Override
+		protected void freeArray(byte[] array) {
+			int length = array.length;
+			super.freeArray(array);
+			((UnpooledByteBufAllocator) alloc()).decrementHeap(length);
+		}
+	}
 	
+	private static final class InstrumentedUnpooledHeapByteBuf extends UnpooledHeapByteBuf {
+		InstrumentedUnpooledHeapByteBuf(UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+			super(alloc, initialCapacity, maxCapacity);
+		}
+		
+		@Override
+		protected byte[] allocateArray(int initialCapacity) {
+			byte[] bytes = super.allocateArray(initialCapacity);
+			((UnpooledByteBufAllocator) alloc()).incrementHeap(bytes.length);
+			return bytes;
+		}
+		
+		@Override
+		protected void freeArray(byte[] array) {
+			int length = array.length;
+			super.freeArray(array);
+			((UnpooledByteBufAllocator) alloc()).decrementHeap(length);
+		}
+	}
+	
+	private static final class InstrumentedUnpooledUnsafeNoCleanerDirectByteBuf
+			extends UnpooledUnsafeNoCleanerDirectByteBuf {
+		InstrumentedUnpooledUnsafeNoCleanerDirectByteBuf(
+				UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+			super(alloc, initialCapacity, maxCapacity);
+		}
+		
+		@Override
+		protected CleanableDirectBuffer allocateDirectBuffer(int capacity) {
+			CleanableDirectBuffer buffer = super.allocateDirectBuffer(capacity);
+			return new DecrementingCleanableDirectBuffer(alloc(), buffer);
+		}
+		
+		@Override
+		protected CleanableDirectBuffer allocateDirectBuffer(int capacity, boolean permitExpensiveClean) {
+			CleanableDirectBuffer buffer = super.allocateDirectBuffer(capacity, permitExpensiveClean);
+			return new DecrementingCleanableDirectBuffer(alloc(), buffer);
+		}
+		
+		@Override
+		CleanableDirectBuffer reallocateDirect(CleanableDirectBuffer oldBuffer, int newCapacity) {
+			int oldCapacity = oldBuffer.buffer().capacity();
+			CleanableDirectBuffer buffer = super.reallocateDirect(oldBuffer, newCapacity);
+			return new DecrementingCleanableDirectBuffer(
+					alloc(), buffer, buffer.buffer().capacity() - oldCapacity);
+		}
+	}
+	
+	private static final class InstrumentedUnpooledUnsafeDirectByteBuf extends UnpooledUnsafeDirectByteBuf {
+		InstrumentedUnpooledUnsafeDirectByteBuf(
+				UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+			super(alloc, initialCapacity, maxCapacity);
+		}
+		
+		@Override
+		protected CleanableDirectBuffer allocateDirectBuffer(int capacity) {
+			CleanableDirectBuffer buffer = super.allocateDirectBuffer(capacity);
+			return new DecrementingCleanableDirectBuffer(alloc(), buffer);
+		}
+		
+		@Override
+		protected CleanableDirectBuffer allocateDirectBuffer(int capacity, boolean permitExpensiveClean) {
+			CleanableDirectBuffer buffer = super.allocateDirectBuffer(capacity, permitExpensiveClean);
+			return new DecrementingCleanableDirectBuffer(alloc(), buffer);
+		}
+		
+		@Override
+		protected ByteBuf allocateDirect(int initialCapacity) {
+			throw new UnsupportedOperationException();
+		}
+		
+		@Override
+		protected void freeDirect(ByteBuffer buffer) {
+			throw new UnsupportedOperationException();
+		}
+	}
+	
+	private static final class InstrumentedUnpooledDirectByteBuf extends UnpooledDirectByteBuf {
+        InstrumentedUnpooledDirectByteBuf(
+                UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+            super(alloc, initialCapacity, maxCapacity);
+        }
+
+        @Override
+        protected CleanableDirectBuffer allocateDirectBuffer(int initialCapacity) {
+            CleanableDirectBuffer buffer = super.allocateDirectBuffer(initialCapacity);
+            return new DecrementingCleanableDirectBuffer(alloc(), buffer);
+        }
+
+        @Override
+        protected CleanableDirectBuffer allocateDirectBuffer(int initialCapacity, boolean permitExpensiveClean) {
+            CleanableDirectBuffer buffer = super.allocateDirectBuffer(initialCapacity, permitExpensiveClean);
+            return new DecrementingCleanableDirectBuffer(alloc(), buffer);
+        }
+
+        @Override
+        protected ByteBuffer allocateDirect(int initialCapacity) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        protected void freeDirect(ByteBuffer buffer) {
+            throw new UnsupportedOperationException();
+        }
+    }
 	
 	private static final class DecrementingCleanableDirectBuffer implements CleanableDirectBuffer {
 		private final UnpooledByteBufAllocator alloc;
