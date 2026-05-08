@@ -39,7 +39,7 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
 	}
 	
 	@Override
-	protected ByteBuf newHeapBuffer(int initialCapacity, int maxCapacity) {
+	protected ByteBuf newDirectBuffer(int initialCapacity, int maxCapacity) {
 		final ByteBuf buf;
 		if (PlatformDependent.hasUnsafe()) {
 			buf = noCleaner ? new InstrumentedUnpooledUnsafeNoCleanerDirectByteBuf(this, initialCapacity, maxCapacity) :
@@ -88,7 +88,7 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
 		metric.heapCounter.add(-amount);
 	}
 	
-	private static final class InstrumentedUnpooledUnsafeHeapByteBuf extends UnpooledUnsafeHeapBuffer {
+	private static final class InstrumentedUnpooledUnsafeHeapByteBuf extends UnpooledUnsafeHeapByteBuf {
 		InstrumentedUnpooledUnsafeHeapByteBuf(UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
 			super(alloc, initialCapacity, maxCapacity);	
 		}
@@ -175,7 +175,7 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
 		}
 		
 		@Override
-		protected ByteBuf allocateDirect(int initialCapacity) {
+		protected ByteBuffer allocateDirect(int initialCapacity) {
 			throw new UnsupportedOperationException();
 		}
 		

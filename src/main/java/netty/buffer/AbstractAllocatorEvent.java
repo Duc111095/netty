@@ -6,7 +6,6 @@ import jdk.jfr.Description;
 import jdk.jfr.Enabled;
 import jdk.jfr.Label;
 
-
 @Enabled(false)
 @Category("Netty")
 @SuppressWarnings("Since15")
