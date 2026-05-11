@@ -3,6 +3,7 @@ package netty.common.util.concurrent;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
+import java.util.function.IntBinaryOperator;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
@@ -22,6 +23,10 @@ public interface MpscIntQueue {
 	int drain(int limit, IntConsumer consumer);
 	
 	int fill(int limit, IntSupplier supplier);
+	
+	default int weakPeekReduce(int limit, int initial, IntBinaryOperator op) {
+		return initial;
+	}
 	
 	boolean isEmpty();
 	
@@ -165,6 +170,30 @@ public interface MpscIntQueue {
 			long pIndex = producerIndex;
 			return cIndex >= pIndex;
 		}
+		
+		@Override
+        public int weakPeekReduce(int limit, int initial, IntBinaryOperator op) {
+            Objects.requireNonNull(op, "op");
+            ObjectUtil.checkPositiveOrZero(limit, "limit");
+            if (limit == 0) {
+                return 0;
+            }
+            int result = initial;
+
+            final int mask = this.mask;
+            final long cIndex = consumerIndex; // Note: could be weakened to plain-load.
+            for (int i = 0; i < limit; i++) {
+                final long index = cIndex + i;
+                final int offset = (int) (index & mask);
+                final int value = get(offset);
+                if (emptyValue == value) {
+                    return result;
+                }
+                // Do not remove the element or advance the consumer index.
+                result = op.applyAsInt(result, value);
+            }
+            return result;
+        }
 		
 		@Override
 		public int size() {
