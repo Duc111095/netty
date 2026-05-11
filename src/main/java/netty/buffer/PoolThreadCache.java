@@ -33,7 +33,6 @@ final class PoolThreadCache {
 	private final int freeSweepAllocationThreshold;
 	private final AtomicBoolean freed = new AtomicBoolean();
 	
-	@SuppressWarnings("unused")
 	private final FreeOnFinalize freeOnFinalize;
 	
 	private int allocations;
@@ -117,6 +116,7 @@ final class PoolThreadCache {
 		return allocate(cacheForNormal(area, sizeIdx), buf, reqCapacity);
 	}
 	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private boolean allocate(MemoryRegionCache<?> cache, PooledByteBuf buf, int reqCapacity) {
 		if (cache == null) {
 			return false;
@@ -288,7 +288,8 @@ final class PoolThreadCache {
 		protected abstract void initBuf(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle,
 				PooledByteBuf<T> buf, int reqCapacity, PoolThreadCache threadCache);
 		
-		public final boolean add(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle, long normCapacity) {
+		@SuppressWarnings("unchecked")
+		public final boolean add(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle, int normCapacity) {
 			Entry<T> entry = newEntry(chunk, nioBuffer, handle, normCapacity);
 			boolean queued = queue.offer(entry);
 			if (!queued) {

@@ -49,6 +49,7 @@ final class PoolChunk<T> implements PoolChunkMetric, ChunkInfo {
 	PoolChunk<T> prev;
 	PoolChunk<T> next;
 	
+	@SuppressWarnings("unchecked")
 	PoolChunk(PoolArena<T> arena, CleanableDirectBuffer cleanable, Object base, T memory, int pageSize, int pageShifts,
 			int chunkSize, int maxPageIdx) {
 		unpooled = false;
@@ -232,7 +233,7 @@ final class PoolChunk<T> implements PoolChunkMetric, ChunkInfo {
 			
 			handle = splitLargeRun(handle, pages);
 			int pinnedSize = runSize(pageShifts, handle);
-			freeBytes -= pinnedBytes;
+			freeBytes -= pinnedSize;
 			return handle;
 		} finally {
 			runsAvailLock.unlock();

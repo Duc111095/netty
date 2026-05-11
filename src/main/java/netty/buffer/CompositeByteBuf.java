@@ -1,6 +1,5 @@
 package netty.buffer;
 
-import java.awt.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -222,10 +221,10 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
 		if (unwrapped instanceof AbstractUnpooledSlicedByteBuf) {
 			unwrappedIndex += ((AbstractUnpooledSlicedByteBuf) unwrapped).idx(0);
 			unwrapped = unwrapped.unwrap();
-		} else if (unwrapped instanceof PooledSliceByteBuf) {
-			unwrappedIndex += ((PooledSliceByteBuf) unwrapped).adjustment;
+		} else if (unwrapped instanceof PooledSlicedByteBuf) {
+			unwrappedIndex += ((PooledSlicedByteBuf) unwrapped).adjustment;
 			unwrapped = unwrapped.unwrap();
-		} else if (unwrapped instanceof DuplicateByteBuf || unwrapped instanceof PooledDuplicateByteBuf) {
+		} else if (unwrapped instanceof DuplicatedByteBuf || unwrapped instanceof PooledDuplicatedByteBuf) {
 			unwrapped = unwrapped.unwrap();
 		}
 		

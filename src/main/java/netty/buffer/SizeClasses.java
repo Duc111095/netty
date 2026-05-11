@@ -1,5 +1,7 @@
 package netty.buffer;
 
+import static netty.buffer.PoolThreadCache.log2;
+
 final class SizeClasses implements SizeClassesMetric {
 	
 	static final int LOG2_QUANTUM = 4;
@@ -38,6 +40,7 @@ final class SizeClasses implements SizeClassesMetric {
 		
 		int normalMaxSize = -1;
 		int nSizes = 0;
+		@SuppressWarnings("unused")
 		int size = 0;
 		
 		int log2Group = LOG2_QUANTUM;
@@ -188,7 +191,7 @@ final class SizeClasses implements SizeClassesMetric {
 	}
 
 	@Override
-	public int pageIdx2size(int pageIdx) {
+	public long pageIdx2size(int pageIdx) {
 		return pageIdx2sizeTab[pageIdx];
 	}
 

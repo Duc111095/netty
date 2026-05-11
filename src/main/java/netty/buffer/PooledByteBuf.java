@@ -1,6 +1,12 @@
 package netty.buffer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.GatheringByteChannel;
+import java.nio.channels.ScatteringByteChannel;
 
 import netty.common.util.Recycler.EnhancedHandle;
 import netty.common.util.internal.ObjectPool.Handle;
@@ -89,7 +95,7 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
 			} else if (newCapacity > maxLength >>> 1 &&
 					(maxLength > 512 || newCapacity > maxLength - 16)) {
 				length = newCapacity;
-				trimIndicesToCapacity(newCapacity);
+				trimIndiciesToCapacity(newCapacity);
 				return this;
 			}
 		}

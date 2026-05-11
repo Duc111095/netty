@@ -6,6 +6,7 @@ import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 
+import netty.buffer.CompositeByteBuf.ByteWrapper;
 import netty.common.util.CharsetUtil;
 import netty.common.util.internal.ObjectUtil;
 import netty.common.util.internal.PlatformDependent;
@@ -119,7 +120,7 @@ public final class Unpooled {
 		return wrappedBuffer(buffers.length, buffers);
 	}
 	
-	static <T> ByteBuf wrappedBuffer(int maxNumComponents, ByteWrapped<T> wrapper, T[] array) {
+	static <T> ByteBuf wrappedBuffer(int maxNumComponents, ByteWrapper<T> wrapper, T[] array) {
 		switch (array.length) {
 		case 0:
 			break;

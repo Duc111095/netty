@@ -1022,6 +1022,7 @@ public final class ByteBufUtil {
 		} else {
 			writeAsciiCharSequence(buffer, writerIndex, seq, len);
 		}
+		return len;
 	}
 	
 	private static int writeAsciiCharSequence(AbstractByteBuf buffer, int writerIndex, CharSequence seq, int len) {

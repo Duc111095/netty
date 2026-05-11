@@ -194,7 +194,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
 		allocationsSmall.increment();
 	}
 	
-	private void allocationHuge(PooledByteBuf<T> buf, int reqCapacity) {
+	private void allocateHuge(PooledByteBuf<T> buf, int reqCapacity) {
 		PoolChunk<T> chunk = newUnpooledChunk(reqCapacity);
 		PooledByteBufAllocator.onAllocateChunk(chunk, false);
 		activeBytesHuge.add(chunk.chunkSize());

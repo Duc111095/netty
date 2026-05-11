@@ -73,7 +73,7 @@ public class PoolChunkList<T> implements PoolChunkListMetric {
 		chunk.free(handle, normCapacity, nioBuffer);
 		if (chunk.freeBytes > freeMaxThreshold) {
 			remove(chunk);
-			return remove0(chunk);
+			return move0(chunk);
 		}
 		return true;
 	}
