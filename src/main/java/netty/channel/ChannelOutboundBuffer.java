@@ -2,6 +2,7 @@ package netty.channel;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
@@ -16,6 +17,8 @@ import netty.common.util.Recycler.Handle;
 import netty.common.util.ReferenceCountUtil;
 import netty.common.util.concurrent.FastThreadLocal;
 import netty.common.util.internal.InternalThreadLocalMap;
+import netty.common.util.internal.ObjectUtil;
+import netty.common.util.internal.PromiseNotificationUtil;
 import netty.common.util.internal.SystemPropertyUtil;
 import netty.common.util.internal.logging.InternalLogger;
 import netty.common.util.internal.logging.InternalLoggerFactory;
@@ -397,7 +400,7 @@ public final class ChannelOutboundBuffer {
 			final int newValue = oldValue & mask;
 			if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
 				if (oldValue != 0 && newValue == 0) {
-					fireChannelWritablityChanged(true);
+					fireChannelWritabilityChanged(true);
 				}
 				break;
 			}
@@ -411,7 +414,7 @@ public final class ChannelOutboundBuffer {
 			final int newValue = oldValue | mask;
 			if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
 				if (oldValue == 0 && newValue != 0) {
-					fireChannelWritablityChanged(true);
+					fireChannelWritabilityChanged(true);
 				}
 				break;
 			}
@@ -491,6 +494,100 @@ public final class ChannelOutboundBuffer {
 		} finally {
 			inFail = false;
 		}
+	}
+	
+	void close(final Throwable cause, final boolean allowChannelOpen) {
+		if (inFail) {
+			channel.eventLoop().execute(new Runnable() {
+				@Override
+				public void run() {
+					close(cause, allowChannelOpen);
+				}
+			});
+			return;
+		}
+		inFail = true;
+		
+		if (!allowChannelOpen && channel.isOpen() ) {
+			throw new IllegalStateException("close() must be invoked after the channel is closed.");
+		}
+		
+		if (!isEmpty()) {
+			throw new IllegalStateException("close() must be invoked after all flushed writes are handled.");
+		}
+		
+		try {
+			Entry e = unflushedEntry;
+			while (e != null) {
+				int size = e.pendingSize;
+				TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
+				
+				if (!e.cancelled) {
+					ReferenceCountUtil.safeRelease(e.msg);
+					safeFail(e.promise, cause);
+				}
+				e = e.unguardedRecycleAndGetNext();
+			} 
+		} finally {
+			inFail = false;
+		}
+		clearNioBuffers();
+	}
+	
+	void close(ClosedChannelException cause) {
+		close(cause, false);
+	}
+	
+	private static void safeSuccess(ChannelPromise promise) {
+		PromiseNotificationUtil.trySuccess(promise, null, promise instanceof VoidChannelPromise ? null : logger);
+	}
+	
+	private static void safeFail(ChannelPromise promise, Throwable cause) {
+		PromiseNotificationUtil.tryFailure(promise, cause, promise instanceof VoidChannelPromise ? null : logger);
+	}
+	
+	public void recycle() {
+		
+	}
+	
+	public long totalPendingWriteBytes() {
+		return totalPendingSize;
+	}
+	
+	public long bytesBeforeUnwritable() {
+		long bytes = channel.config().getWriteBufferHighWaterMark() - totalPendingSize + 1;
+		return bytes > 0 && isWritable() ? bytes : 0;
+	}
+	
+	public long bytesBeforeWritable() {
+		long bytes = totalPendingSize - channel.config().getWriteBufferLowWaterMark() + 1;
+		return bytes <= 0 || isWritable() ? 0 : bytes;
+	}
+	
+	public void forEachFlushedMessage(MessageProcessor processor) throws Exception {
+		ObjectUtil.checkNotNull(processor, "processor");
+		
+		Entry entry = flushedEntry;
+		if (entry == null) {
+			return;
+		}
+		
+		do {
+			if (!entry.cancelled) {
+				if (!processor.processMessage(entry.msg)) {
+					return;
+				}
+			}
+			entry = entry.next;
+		} while (isFlushedEntry(entry));
+	}
+	
+	private boolean isFlushedEntry(Entry e) {
+		return e != null && e != unflushedEntry;
+	}
+	
+	public interface MessageProcessor {
+		boolean processMessage(Object msg) throws Exception;
 	}
 	
 	static final class Entry {
