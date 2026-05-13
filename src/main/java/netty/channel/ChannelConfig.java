@@ -34,10 +34,6 @@ public interface ChannelConfig {
 	
 	ChannelConfig setRecvByteBufAllocator(RecvByteBufAllocator allocator);
 	
-	<T extends RecvByteBufAllocator> T getRecvByteBufAllocator();
-	
-	ChannelConfig setRecvByteBufAllocator(RecvByteBufAllocator allocator);
-	
 	boolean isAutoRead();
 	
 	ChannelConfig setAutoRead(boolean autoRead);

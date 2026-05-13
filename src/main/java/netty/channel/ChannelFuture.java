@@ -1,6 +1,7 @@
 package netty.channel;
 
-import java.util.concurrent.Future;
+import netty.common.util.concurrent.Future;
+import netty.common.util.concurrent.GenericFutureListener;
 
 public interface ChannelFuture extends Future<Void>{	
 	Channel channel();
@@ -21,10 +22,10 @@ public interface ChannelFuture extends Future<Void>{
 	ChannelFuture sync() throws InterruptedException;
 	
 	@Override
-	ChannelFuture syncInterruptibly();
+	ChannelFuture syncUninterruptibly();
 	
 	@Override
-	ChannelFuture await() throws InterupptedException;
+	ChannelFuture await() throws InterruptedException;
 	
 	@Override
 	ChannelFuture awaitUninterruptibly();
