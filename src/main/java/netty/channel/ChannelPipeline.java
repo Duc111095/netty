@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import netty.common.util.concurrent.EventExecutorGroup;
+
 public interface ChannelPipeline 
 	extends ChannelInboundInvoker, ChannelOutboundInvoker, Iterable<Entry<String, ChannelHandler>>{
 	
@@ -17,11 +19,11 @@ public interface ChannelPipeline
 	
 	ChannelPipeline addBefore(String baseName, String name, ChannelHandler handler);
 	
-	ChannelPipeline addBefore(EventExecutorGroup group, String baseName, String name, ChnanelHandler handler);
+	ChannelPipeline addBefore(EventExecutorGroup group, String baseName, String name, ChannelHandler handler);
 	
 	ChannelPipeline addAfter(String baseName, String name, ChannelHandler handler);
 	
-	ChannelPipeline addAfter(EventExecutorGroup group, String baseName, String name, ChnanelHandler handler);
+	ChannelPipeline addAfter(EventExecutorGroup group, String baseName, String name, ChannelHandler handler);
 	
 	ChannelPipeline addFirst(ChannelHandler... handlers);
 	

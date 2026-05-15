@@ -205,6 +205,6 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     	
     	ChannelPromise voidPromise();
     	
-    	ChannelOutboundBuffer outBoundBuffer();
+    	ChannelOutboundBuffer outboundBuffer();
     }
 }

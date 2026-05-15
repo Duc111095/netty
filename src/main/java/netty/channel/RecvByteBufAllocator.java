@@ -7,7 +7,7 @@ import netty.common.util.internal.ObjectUtil;
 
 public interface RecvByteBufAllocator {
 	
-	Handle handle();
+	Handle newHandle();
 	
 	interface Handle {
 		

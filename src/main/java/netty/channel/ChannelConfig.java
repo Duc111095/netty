@@ -50,9 +50,11 @@ public interface ChannelConfig {
 	
 	ChannelConfig setWriteBufferLowWaterMark(int writeBufferLowWaterMark);
 	
-	MessageSizeEstimator getMessageSizeEstimator(MessageSizeEstimator estimator);
+	MessageSizeEstimator getMessageSizeEstimator();
+	
+	ChannelConfig setMessageSizeEstimator(MessageSizeEstimator estimator);
 	
 	WriteBufferWaterMark getWriteBufferWaterMark();
 	
-	ChannelConfig setWriterBufferWaterMark(WriteBufferWaterMark writeBufferWaterMark);
+	ChannelConfig setWriteBufferWaterMark(WriteBufferWaterMark writeBufferWaterMark);
 }
