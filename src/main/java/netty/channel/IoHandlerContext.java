@@ -7,7 +7,7 @@ public interface IoHandlerContext {
 	
 	long deadlineNanos();
 	
-	default void reportActiveToTime(long activeNanos) {
+	default void reportActiveIoTime(long activeNanos) {
 		
 	}
 	

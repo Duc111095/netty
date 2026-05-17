@@ -9,7 +9,7 @@ public interface AddressedEnvelope<M, A extends SocketAddress> extends Reference
 	
 	A sender();
 	
-	A recipent();
+	A recipient();
 	
 	@Override
 	AddressedEnvelope<M, A> retain();

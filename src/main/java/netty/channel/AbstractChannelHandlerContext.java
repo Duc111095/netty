@@ -583,7 +583,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     					headContext.read(next);
     				} else if (handler instanceof ChannelDuplexHandler) {
     					((ChannelDuplexHandler) handler).read(next);
-    				} else if (handler instanceof ChnanelOutboundHandlerAdapter) {
+    				} else if (handler instanceof ChannelOutboundHandlerAdapter) {
     					((ChannelOutboundHandlerAdapter) handler).read(next);
     				} else {
     					((ChannelOutboundHandler) handler).read(next);
@@ -663,7 +663,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     					final DefaultChannelPipeline.HeadContext headContext = pipeline.head;
     					if (handler == headContext) {
     						headContext.write(next, msg, promise);
-    					} else if (handler instanceof ChannelDuplexPromise) {
+    					} else if (handler instanceof ChannelDuplexHandler) {
     						((ChannelDuplexHandler) handler).write(next, msg, promise);
     					} else if (handler instanceof ChannelOutboundHandlerAdapter) {
     						((ChannelOutboundHandlerAdapter) handler).write(next, msg, promise);

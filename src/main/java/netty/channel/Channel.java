@@ -177,7 +177,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     }
 	
     interface Unsafe {
-    	RecvByteBufAllocator.Handle recvBufAllocatorHandle();
+    	RecvByteBufAllocator.Handle recvBufAllocHandle();
     	
     	SocketAddress localAddress();
     	
