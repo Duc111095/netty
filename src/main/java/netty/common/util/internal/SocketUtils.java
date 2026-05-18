@@ -9,6 +9,9 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.nio.channels.DatagramChannel;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
@@ -43,6 +46,61 @@ public final class SocketUtils {
 			throw (IOException) e.getCause();
 		}
 	}
+	
+	public static boolean connect(final SocketChannel socketChannel, final SocketAddress remoteAddress)
+            throws IOException {
+        try {
+            return AccessController.doPrivileged(new PrivilegedExceptionAction<Boolean>() {
+                @Override
+                public Boolean run() throws IOException {
+                    return socketChannel.connect(remoteAddress);
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (IOException) e.getCause();
+        }
+    }
+
+    public static void bind(final SocketChannel socketChannel, final SocketAddress address) throws IOException {
+        try {
+            AccessController.doPrivileged(new PrivilegedExceptionAction<Void>() {
+                @Override
+                public Void run() throws IOException {
+                    socketChannel.bind(address);
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (IOException) e.getCause();
+        }
+    }
+
+    public static SocketChannel accept(final ServerSocketChannel serverSocketChannel) throws IOException {
+        try {
+            return AccessController.doPrivileged(new PrivilegedExceptionAction<SocketChannel>() {
+                @Override
+                public SocketChannel run() throws IOException {
+                    return serverSocketChannel.accept();
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (IOException) e.getCause();
+        }
+    }
+
+    public static void bind(final DatagramChannel networkChannel, final SocketAddress address) throws IOException {
+        try {
+            AccessController.doPrivileged(new PrivilegedExceptionAction<Void>() {
+                @Override
+                public Void run() throws IOException {
+                    networkChannel.bind(address);
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (IOException) e.getCause();
+        }
+    }
 	
 	public static void bind(final Socket socket, final SocketAddress bindpoint) throws IOException {
 		try {

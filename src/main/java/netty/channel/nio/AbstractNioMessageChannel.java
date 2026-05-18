@@ -155,7 +155,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 		return true;
 	}
 	
-	protected abstract int doReadMessage(List<Object> buf ) throws Exception;
+	protected abstract int doReadMessages(List<Object> buf ) throws Exception;
 	
 	protected abstract boolean doWriteMessage(Object msg, ChannelOutboundBuffer in) throws Exception;
 }
