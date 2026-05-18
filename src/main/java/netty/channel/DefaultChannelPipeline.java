@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.WeakHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import netty.channel.Channel.Unsafe;
@@ -1103,14 +1104,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
     
     protected void incrementPendingOutboundBytes(long size) {
-    	ChannelOutboundBuffer buffer = channel.unsafe().outBoundBuffer();
+    	ChannelOutboundBuffer buffer = channel.unsafe().outboundBuffer();
     	if (buffer != null) {
     		buffer.incrementPendingOutboundBytes(size);
     	}
     }
     
     protected void decrementPendingOutboundBytes(long size) {
-    	ChannelOutboundBuffer buffer = channel.unsafe().outBoundBuffer();
+    	ChannelOutboundBuffer buffer = channel.unsafe().outboundBuffer();
     	if (buffer != null) {
     		buffer.decrementPendingOutboundBytes(size);
     	}
@@ -1140,7 +1141,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 		
 		@Override
 		public void channelInactive(ChannelHandlerContext ctx) {
-			onUnhandledInbountChannelInactive();
+			onUnhandledInboundChannelInactive();
 		}
 		
 		@Override
@@ -1336,7 +1337,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 				try {
 					executor.execute(this);
 				} catch (RejectedExecutionException e) {
-					if (Logger.isWarnEnabled()) {
+					if (logger.isWarnEnabled()) {
 						logger.warn(
 								"Can't invoke handlerAdded() as the EventExecutor {} rejected it, removing handler {}.",
 								executor, ctx.name(), e);
@@ -1362,7 +1363,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 		void execute() {
 			EventExecutor executor = ctx.executor();
 			if (executor.inEventLoop()) {
-				callHandlerRemove0(ctx);
+				callHandlerRemoved0(ctx);
 			} else {
 				try {
 					executor.execute(this);

@@ -1,6 +1,6 @@
 package netty.channel;
 
-import java.util.concurrent.Future;
+import netty.common.util.concurrent.Future;
 
 public interface IoEventLoop extends EventLoop, IoEventLoopGroup {
 	@Override

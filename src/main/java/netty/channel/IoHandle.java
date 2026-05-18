@@ -1,7 +1,5 @@
 package netty.channel;
 
-import java.io.IOException;
-
 public interface IoHandle extends AutoCloseable {
 	
 	void handle(IoRegistration registration, IoEvent ioEvent);
@@ -14,5 +12,5 @@ public interface IoHandle extends AutoCloseable {
 		
 	}
 	
-	void close() throws IOException;
+	void close() throws Exception;
 }
